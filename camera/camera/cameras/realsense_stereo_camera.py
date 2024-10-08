@@ -1,17 +1,21 @@
 import pyrealsense2 as rs
 import numpy as np
 import cv2 as cv
-import os
 import yaml
-
 from ..interfaces.stereo_camera_interface import StereoCameraInterface
 
 
 class RealSenseStereoCamera(StereoCameraInterface):
-    def __init__(self):
-        self.config_path = f"{os.getcwd()}/src/sensors/camera/configs/realsense_config.yaml"
-        self.load_config()
-        
+    def __init__(self, subsystem):
+
+        self.config_path = f'../../../custom_msg/config/{subsystem}.yaml'
+        self.config = self.load_config(self.config_path)
+
+        # the configuration of each camera will be implemented on the CS side
+        # need to hardcode now in the code the config
+        self.fps = 30
+        self.x = 0
+        self.y = 0
 
         self.pipe = rs.pipeline()  # Create a RealSense pipeline object.
 
@@ -19,34 +23,13 @@ class RealSenseStereoCamera(StereoCameraInterface):
         config = rs.config()
         # config.enable_device('123622270224')
 
-
-        # res = {"x": 640, "y": 480}
-        # res = {"x": 1280, "y": 720}
-        # res_col = {'x': 1920, 'y':1080}
-        # res_depth = {'x':1280,'y':720}
-        self.fps = self.config['fps']
-        # self.using_depth = self.config['use_depth']
-
-        config.enable_stream(rs.stream.depth, self.config['x'], self.config['y'], rs.format.z16, self.fps)
-        config.enable_stream(rs.stream.color, self.config['x'], self.config['y'], rs.format.bgr8, self.fps)
+        config.enable_stream(rs.stream.depth, self.x, self.y, rs.format.z16, self.fps)
+        config.enable_stream(rs.stream.color, self.x, self.y, rs.format.bgr8, self.fps)
 
         # Start streaming from file
         self.profile = self.pipe.start(config)
 
         self.align = rs.align(rs.stream.color) #TODO added
-
-    def load_config(self):
-        with open(self.config_path, "r") as file:
-            conf = yaml.safe_load(file)
-        config = conf['x_y_fps']
-        self.config = {}
-        self.config['x'] = int(config[0])
-        self.config['y'] = int(config[1])
-        self.config['fps'] = int(config[2])
-        # if len(config) < 4:
-        #     self.config['use_depth'] = True
-        # else:
-        #     self.config['use_depth'] = bool(config[3])
         
 
     def get_depth_scale(self):
@@ -96,6 +79,27 @@ class RealSenseStereoCamera(StereoCameraInterface):
         )  # Convert the depth frame to a NumPy array.
 
         return depth
+    
+    def camera_params_callback(self, request, response):
+        intrinsics = self.camera.get_intrinsics()
+        depth_scale = self.camera.get_depth_scale()
+        distortion_coefficients = self.camera.get_coeffs()
+        response.depth_scale = depth_scale
+        response.fx = intrinsics["fx"]
+        response.fy = intrinsics["fy"]
+        response.cx = intrinsics["cx"]
+        response.cy = intrinsics["cy"]
+        response.distortion_coefficients = distortion_coefficients
+        self.get_logger().info(
+            f"Provided intrinsics: fx={response.fx}, fy={response.fy}, cx={response.cx}, cy={response.cy}"
+        )
+        self.get_logger().info(
+            f"Provided distortion coefficients: {response.distortion_coefficients}"
+        )
+        self.get_logger().info(
+            f"Provided depth scale: {response.depth_scale}"
+        )
+        return response
 
     # A method to get the color image from the RealSense camera.
     def get_image(self):

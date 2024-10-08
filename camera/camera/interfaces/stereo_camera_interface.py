@@ -3,7 +3,6 @@ from .monocular_camera_interface import (
 )
 from abc import abstractmethod
 
-
 class StereoCameraInterface(MonocularCameraInterface):
     @abstractmethod
     def get_depth(self):

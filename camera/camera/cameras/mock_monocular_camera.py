@@ -1,6 +1,9 @@
 from ..interfaces.monocular_camera_interface import MonocularCameraInterface
 import numpy as np
 
+'''
+FOR SIMULATION ONLY, NOT IMPLEMENTED ON ROVER
+'''
 
 class MockMonocularCamera(MonocularCameraInterface):
     def __init__(self):

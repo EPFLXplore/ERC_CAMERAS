@@ -1,6 +1,9 @@
 from ..interfaces.stereo_camera_interface import StereoCameraInterface
 import numpy as np
 
+'''
+FOR SIMULATION ONLY, NOT IMPLEMENTED ON ROVER
+'''
 
 class MockStereoCamera(StereoCameraInterface):
     def __init__(self):
