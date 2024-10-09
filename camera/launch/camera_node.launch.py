@@ -23,12 +23,12 @@ def generate_launch_description():
     camera_cs_0 = Node(
         package='camera',
         executable='camera',
-        name='camera_0',
-        namespace='/CS',
+        name='camera_cs_0',
+        namespace='/ROVER',
         parameters=[
             {'camera_type': "monocular"},
-            {'topic_service': "/ROVER/camera_cs_0"},
-            {'topic_pub': "/ROVER/pub_camera_cs_0"},
+            {'topic_service': "/ROVER/req_camera_cs_0"},
+            {'topic_pub': "/ROVER/feed_camera_cs_0"},
             {'test': "/dev/video0"}
         ],
     )
@@ -36,12 +36,12 @@ def generate_launch_description():
     camera_cs_1 = Node(
         package='camera',
         executable='camera',
-        name='camera_1',
-        namespace='/CS',
+        name='camera_cs_1',
+        namespace='/ROVER',
         parameters=[
             {'camera_type': "monocular"},
-            {'topic_service': "/ROVER/camera_cs_1"},
-            {'topic_pub': "/ROVER/pub_camera_cs_1"},
+            {'topic_service': "/ROVER/req_camera_cs_1"},
+            {'topic_pub': "/ROVER/feed_camera_cs_1"},
             {'test': "/dev/video2"}
         ],
     )
