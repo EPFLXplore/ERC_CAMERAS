@@ -1,14 +1,8 @@
 from abc import ABC, abstractmethod
 
-class MonocularCameraInterface(ABC):
-    @abstractmethod
-    def get_image(self):
-        pass
+from .camera_interface import CameraInterface
 
+class MonocularCameraInterface(CameraInterface):
     @abstractmethod
     def get_rgb(self):
-        pass
-
-    @abstractmethod
-    def start_cameras_callback(self, request, response):
         pass

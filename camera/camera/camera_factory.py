@@ -6,6 +6,7 @@ from .cameras.oakd_stereo_camera import OakDStereoCamera
 import yaml
 import rclpy
 from rclpy.node import Node
+from std_msgs.msg import String
 
 class CameraFactory(Node):
 
@@ -15,23 +16,43 @@ class CameraFactory(Node):
         self.cameras = []
         self.cameras_objects = self.get_all_cameras()
 
+        self.publish_ids = self.create_publisher(String, 'test', 1) # todo custom message
+        self.timer = self.create_timer(5, self.timer_callback)
+
     @staticmethod
-    def create_camera(node, camera_type: str):
-        if camera_type == "realsense_stereo":
+    def create_camera(node):
+        if node.camera_type == "realsense_stereo":
             return RealSenseStereoCamera(node)
-        elif camera_type == "oakd_stereo":
+        elif node.camera_type == "oakd_stereo":
             return OakDStereoCamera(node)
-        elif camera_type == "monocular":
+        elif node.camera_type == "monocular":
             return MonocularCamera(node)
-        elif camera_type == "mock_stereo":
+        elif node.camera_type == "mock_stereo":
             return MockStereoCamera(node)
-        elif camera_type == "mock_monocular":
+        elif node.camera_type == "mock_monocular":
             return MockMonocularCamera(node)
         else:
-            raise ValueError(f"Unknown camera type: {camera_type}")
+            raise ValueError(f"Unknown camera type: {node.camera_type}")
     
     def get_id_vendor():
         pass
 
     def get_all_cameras(self):
         pass
+
+    def timer_callback(self):
+        pass # will puslisher the ids
+
+def main(args=None):
+    
+    rclpy.init(args=args)
+
+    camera_factory = CameraFactory()
+    rclpy.spin(camera_factory)
+
+    camera_factory.destroy_node()
+    rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()

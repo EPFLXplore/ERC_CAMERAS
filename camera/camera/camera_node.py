@@ -1,80 +1,73 @@
-# Import the necessary libraries
 import rclpy
-from rclpy.node import Node  # Handles the creation of nodes
-from sensor_msgs.msg import CompressedImage, Image  # Image is the message type
-from cv_bridge import CvBridge  # Package to convert between ROS and OpenCV Images
-from custom_msg.msg import CompressedRGBD
-from custom_msg.srv import CameraParams
+from rclpy.node import Node
 from std_srvs.srv import SetBool
-from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy, QoSDurabilityPolicy
-
-
-import yaml
 from .camera_factory import CameraFactory
-from .get_interfaces import GetInterfaces
+from sensor_msgs.msg import CompressedImage
+import cv2, threading
+from std_msgs.msg import String
+from rclpy.callback_groups import ReentrantCallbackGroup, MutuallyExclusiveCallbackGroup
+
 
 class CameraNode(Node):
     """
-    Create an CameraNode class
+    Create a CameraNode class
     """
 
     def __init__(self):
         super().__init__("camera_node")
 
+        self.callback_group = ReentrantCallbackGroup()
+
         # parameters
         self.declare_parameter("camera_type")
-        camera_type = self.get_parameter("camera_type").get_parameter_value().string_value
+        self.declare_parameter("topic_service")
+        self.declare_parameter("topic_pub")
+        self.declare_parameter("test")
+        self.camera_type = self.get_parameter("camera_type").get_parameter_value().string_value
+        self.service_topic = self.get_parameter("topic_service").get_parameter_value().string_value
+        self.publisher_topic = self.get_parameter("topic_pub").get_parameter_value().string_value
+        self.test = self.get_parameter("test").get_parameter_value().string_value
 
          # object camera
-        self.camera =  CameraFactory.create_camera(self, camera_type)
-        timer_period = 1.0 / self.camera.fps
+        self.camera =  CameraFactory.create_camera(self)
+        self.stopped = True
 
         # Service to activate the camera. For now we hardcode the parameters so we use just a SetBool
-        self.service_activation = self.create_service(SetBool, self.camera.topic, self.camera.start_cameras_callback)
+        self.get_ids = self.create_subscription(String, 'test', self.callback_ids, 10) # todo custom message
+        self.service_activation = self.create_service(SetBool, self.service_topic, self.start_cameras_callback)
+        self.cam_pubs = self.create_publisher(CompressedImage, self.publisher_topic, self.camera.qos_profile, callback_group=self.callback_group)
+        self.thread = threading.Thread(target=self.camera.publish_feeds, args=(self.test,)) # need to get from camera factory
 
-        '''
-        if self.config['publish_straigth_to_cs']:
-            self.publisher_ = self.create_publisher(CompressedImage, GetInterfaces.get('hd_camera_rgb'), 1)
-            self.timer = self.create_timer(timer_period, self.rgb_callback)
-        else:
-            self.publisher_ = self.create_publisher(CompressedRGBD, GetInterfaces.get('hd_camera_rgbd'), 1)
-            self.timer = self.create_timer(timer_period, self.rgbd_callback)
-        
-        self.publisher = self.create_publisher(CompressedImage, self.rover_names['rover_cameras_cs_prefix'] + str(i), qos_profile) for i in range(len(self.camera_ids))
-
-        # Used to convert between ROS and OpenCV images
-        self.bridge = CvBridge()
-        '''
         self.get_logger().info("Cameras ready")
-
-    def rgbd_callback(self):
-        """
-        Callback function.
-        Publishes a frame to the video_frames topic
-        """
-        color, depth = self.camera.get_rgbd()
-
-        msg = CompressedRGBD()
-
-        depth_msg = self.bridge.cv2_to_imgmsg(depth, "mono16")
-        msg.depth = depth_msg
-        msg.color = self.bridge.cv2_to_compressed_imgmsg(color)
-
-        self.publisher_.publish(msg)
-
-
-    def rgb_callback(self):
-        """
-        Callback function.
-        Publishes a frame to the video_frames topic
-        """
-        color = self.camera.get_rgb()
-        msg = self.bridge.cv2_to_compressed_imgmsg(color)
-
-        self.publisher_.publish(msg)
     
-    def load_config(self):
-        with open(self.config_path, "r") as file:
-            config = yaml.safe_load(file)['/**']['ros__parameters']
-        
-        return config
+    def start_cameras_callback(self, request, response):
+        if request.data:
+            self.stopped = False # the timer will start sending inside the camera object
+            self.thread = threading.Thread(target=self.camera.publish_feeds, args=(self.test,)) # need to get from camera factory
+            self.thread.start()
+            response.success = True
+            response.message = "Cameras started"
+        else:
+            self.stopped = True # the timer will stop sending inside the camera object
+            self.thread.join()
+            response.success = True
+            response.message = "Cameras stopped"
+
+        return response
+    
+    def callback_ids(self, msg):
+        self.ids = msg.data
+
+def main(args=None):
+    
+    rclpy.init(args=args)
+
+    cameras_publisher = CameraNode()
+    rclpy.spin(cameras_publisher)
+
+    cameras_publisher.destroy_node()
+    rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()
