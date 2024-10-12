@@ -17,12 +17,13 @@ class CameraNode(Node):
         super().__init__("camera_node")
 
         self.callback_group = ReentrantCallbackGroup()
+        self.default = ""
 
         # parameters
-        self.declare_parameter("camera_type")
-        self.declare_parameter("topic_service")
-        self.declare_parameter("topic_pub")
-        self.declare_parameter("test")
+        self.declare_parameter("camera_type", self.default)
+        self.declare_parameter("topic_service", self.default)
+        self.declare_parameter("topic_pub", self.default)
+        self.declare_parameter("test", self.default)
         self.camera_type = self.get_parameter("camera_type").get_parameter_value().string_value
         self.service_topic = self.get_parameter("topic_service").get_parameter_value().string_value
         self.publisher_topic = self.get_parameter("topic_pub").get_parameter_value().string_value

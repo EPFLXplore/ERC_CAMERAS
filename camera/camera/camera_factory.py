@@ -7,11 +7,12 @@ import yaml
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
+from cv2_enumerate_cameras import enumerate_cameras
 
 class CameraFactory(Node):
 
     def __init__(self):
-        super.__init__("camera_factory")
+        super().__init__("camera_factory")
 
         self.cameras = []
         self.cameras_objects = self.get_all_cameras()
@@ -38,7 +39,8 @@ class CameraFactory(Node):
         pass
 
     def get_all_cameras(self):
-        pass
+        for camera_info in enumerate_cameras():
+            self.get_logger().info(f'{camera_info.pid}:{camera_info.vid} {camera_info.name} {camera_info.backend} {camera_info.index}')
 
     def timer_callback(self):
         pass # will puslisher the ids
