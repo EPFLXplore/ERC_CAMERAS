@@ -33,9 +33,22 @@ def generate_launch_description():
         ],
     )
 
+    camera_hd_gripper = Node(
+        package='camera',
+        executable='camera',
+        name='camera_hd_gripper',
+        namespace='/HD',
+        parameters=[
+            {'camera_type': "realsense_stereo"},
+            {'topic_service': "/HD/req_camera_hd_0"},
+            {'topic_pub': "/HD/feed_camera_hd_rgb"},
+            {'test': "/todo/asgigi"}
+        ],
+    )
     return LaunchDescription(
         [
             camera_factory,            
-            camera_cs_0
+            camera_cs_0,
+            camera_hd_gripper
                             ]
     )

@@ -2,35 +2,43 @@ import pyrealsense2 as rs
 import numpy as np
 import cv2 as cv
 import yaml
+import time
 from ..interfaces.stereo_camera_interface import StereoCameraInterface
+from cv_bridge import CvBridge
+from time import sleep
+from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy, QoSDurabilityPolicy
 
 
 class RealSenseStereoCamera(StereoCameraInterface):
-    def __init__(self, subsystem):
-
-        self.config_path = f'../../../custom_msg/config/{subsystem}.yaml'
-        self.config = self.load_config(self.config_path)
-
+    def __init__(self, node):
         # the configuration of each camera will be implemented on the CS side
         # need to hardcode now in the code the config
         self.fps = 30
-        self.x = 0
-        self.y = 0
+        self.x = 1280#640
+        self.y = 720#480
+
+        #TODO: Add parameter to select realsense camera by serial number
 
         self.pipe = rs.pipeline()  # Create a RealSense pipeline object.
 
         # TODO: Add a configuration object for the pipeline.
-        config = rs.config()
+        self.config = rs.config()
         # config.enable_device('123622270224')
 
-        config.enable_stream(rs.stream.depth, self.x, self.y, rs.format.z16, self.fps)
-        config.enable_stream(rs.stream.color, self.x, self.y, rs.format.bgr8, self.fps)
+       
+          
 
-        # Start streaming from file
-        self.profile = self.pipe.start(config)
 
-        self.align = rs.align(rs.stream.color) #TODO added
-        
+        self.node = node
+
+        self.qos_profile = QoSProfile(
+            reliability=QoSReliabilityPolicy.BEST_EFFORT,
+            durability=QoSDurabilityPolicy.VOLATILE,
+            history=QoSHistoryPolicy.KEEP_LAST,
+            depth=1,
+        )
+
+        self.bridge = CvBridge()
 
     def get_depth_scale(self):
         depth_scale = self.profile.get_device().first_depth_sensor().get_depth_scale()
@@ -121,3 +129,38 @@ class RealSenseStereoCamera(StereoCameraInterface):
         depth_frame = np.asanyarray(frameset.get_depth_frame().get_data())
         # depth_frame = self.get_depth()
         return color_frame, depth_frame
+    
+    def get_rgb(self):
+        frameset = self.pipe.wait_for_frames()
+        color_frame = np.asanyarray((frameset.get_color_frame().get_data()))
+        return color_frame      
+
+    def publish_feeds(self, camera_id):#camera_id added just so it works with other cameras
+        self.node.get_logger().info("STARTING TO PUBLISH RGB")
+
+        #self.config.enable_stream(rs.stream.depth, self.x, self.y, rs.format.z16, self.fps)
+        self.config.enable_stream(rs.stream.color, self.x, self.y, rs.format.bgr8, self.fps)
+
+        # Start streaming from file
+        self.profile = self.pipe.start(self.config)
+
+        #self.align = rs.align(rs.stream.color) 
+     
+        for i in range(10):
+            frame = self.get_rgb()
+
+        image_idx = 0
+        while True:
+            self.node.get_logger().info("Capturing " + str(image_idx) + " | time: " + str(time.time()))
+            frame = self.get_rgb()
+
+            if self.node.stopped:
+                self.pipe.stop()
+                break    
+            
+            compressed_image = self.bridge.cv2_to_compressed_imgmsg(frame)
+            self.node.cam_pubs.publish(compressed_image)
+            image_idx += 1
+            #sleep(1/self.fps)  #realsense pipeline already takes care of fps
+
+            
