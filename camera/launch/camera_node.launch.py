@@ -29,7 +29,7 @@ def generate_launch_description():
             {'camera_type': "monocular"},
             {'topic_service': "/ROVER/req_camera_cs_0"},
             {'topic_pub': "/ROVER/feed_camera_cs_0"},
-            {'test': "/dev/video2"}
+            {'test': "/dev/camera_cs_0"}
         ],
     )
 
