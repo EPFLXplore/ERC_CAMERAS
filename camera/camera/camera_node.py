@@ -23,11 +23,11 @@ class CameraNode(Node):
         self.declare_parameter("camera_type", self.default)
         self.declare_parameter("topic_service", self.default)
         self.declare_parameter("topic_pub", self.default)
-        self.declare_parameter("test", self.default)
+        self.declare_parameter("devrule", self.default)
         self.camera_type = self.get_parameter("camera_type").get_parameter_value().string_value
         self.service_topic = self.get_parameter("topic_service").get_parameter_value().string_value
         self.publisher_topic = self.get_parameter("topic_pub").get_parameter_value().string_value
-        self.test = self.get_parameter("test").get_parameter_value().string_value
+        self.devrule = self.get_parameter("devrule").get_parameter_value().string_value
 
          # object camera
         self.camera =  CameraFactory.create_camera(self)
@@ -44,7 +44,7 @@ class CameraNode(Node):
     def start_cameras_callback(self, request, response):
         if request.data:
             self.stopped = False # the timer will start sending inside the camera object
-            self.thread = threading.Thread(target=self.camera.publish_feeds, args=(self.test,))
+            self.thread = threading.Thread(target=self.camera.publish_feeds, args=(self.devrule,))
             self.thread.start()
             response.success = True
             response.message = "Cameras started"
@@ -55,9 +55,6 @@ class CameraNode(Node):
             response.message = "Cameras stopped"
 
         return response
-    
-    def callback_ids(self, msg):
-        self.ids = msg.data
 
 def main(args=None):
     

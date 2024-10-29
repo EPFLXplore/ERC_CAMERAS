@@ -13,13 +13,6 @@ def get_package_file(package, file_path):
 
 def generate_launch_description():
 
-    camera_factory = Node(
-        package='camera',
-        executable='factory',
-        name='camera_factory',
-        namespace='/ROVER'
-    )
-
     camera_cs_0 = Node(
         package='camera',
         executable='camera',
@@ -29,13 +22,39 @@ def generate_launch_description():
             {'camera_type': "monocular"},
             {'topic_service': "/ROVER/req_camera_cs_0"},
             {'topic_pub': "/ROVER/feed_camera_cs_0"},
-            {'test': "/dev/camera_cs_0"}
+            {'devrule': "/dev/camera_cs_0"}
+        ],
+    )
+    camera_cs_1 = Node(
+        package='camera',
+        executable='camera',
+        name='camera_cs_1',
+        namespace='/ROVER',
+        parameters=[
+            {'camera_type': "monocular"},
+            {'topic_service': "/ROVER/req_camera_cs_1"},
+            {'topic_pub': "/ROVER/feed_camera_cs_1"},
+            {'devrule': "/dev/camera_cs_1"}
+        ],
+    )
+
+    camera_cs_2 = Node(
+        package='camera',
+        executable='camera',
+        name='camera_cs_2',
+        namespace='/ROVER',
+        parameters=[
+            {'camera_type': "monocular"},
+            {'topic_service': "/ROVER/req_camera_cs_2"},
+            {'topic_pub': "/ROVER/feed_camera_cs_2"},
+            {'devrule': "/dev/camera_cs_2"}
         ],
     )
 
     return LaunchDescription(
         [
-            camera_factory,            
-            camera_cs_0
+            camera_cs_0,
+            camera_cs_1,
+            camera_cs_2
                             ]
     )
