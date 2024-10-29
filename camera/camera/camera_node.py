@@ -34,21 +34,21 @@ class CameraNode(Node):
         self.stopped = True
 
         # Service to activate the camera. For now we hardcode the parameters so we use just a SetBool
-        self.get_ids = self.create_subscription(String, 'test', self.callback_ids, 10) # todo custom message
         self.service_activation = self.create_service(SetBool, self.service_topic, self.start_cameras_callback)
-        self.cam_pubs = self.create_publisher(CompressedImage, self.publisher_topic, self.camera.qos_profile, callback_group=self.callback_group)
-        self.thread = threading.Thread(target=self.camera.publish_feeds, args=(self.test,)) # need to get from camera factory
+        self.cam_pubs = self.create_publisher(CompressedImage, self.publisher_topic, qos_profile=self.camera.qos_profile, callback_group=self.callback_group)
+
+        self.thread = None
 
         self.get_logger().info("Cameras ready")
     
     def start_cameras_callback(self, request, response):
         if request.data:
             self.stopped = False # the timer will start sending inside the camera object
-            self.thread = threading.Thread(target=self.camera.publish_feeds, args=(self.test,)) # need to get from camera factory
+            self.thread = threading.Thread(target=self.camera.publish_feeds, args=(self.test,))
             self.thread.start()
             response.success = True
             response.message = "Cameras started"
-        else:
+        elif request.data == 'false':
             self.stopped = True # the timer will stop sending inside the camera object
             self.thread.join()
             response.success = True

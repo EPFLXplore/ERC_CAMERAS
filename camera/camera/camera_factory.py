@@ -15,7 +15,7 @@ class CameraFactory(Node):
         super().__init__("camera_factory")
 
         self.cameras = []
-        self.cameras_objects = self.get_all_cameras()
+        #self.cameras_objects = self.get_all_cameras()
 
         self.publish_ids = self.create_publisher(String, 'test', 1) # todo custom message
         self.timer = self.create_timer(5, self.timer_callback)
