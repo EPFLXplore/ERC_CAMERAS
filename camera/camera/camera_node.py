@@ -37,7 +37,7 @@ class CameraNode(Node):
         self.service_activation = self.create_service(SetBool, self.service_topic, self.start_cameras_callback)
         self.cam_pubs = self.create_publisher(CompressedImage, self.publisher_topic, qos_profile=self.camera.qos_profile, callback_group=self.callback_group)
 
-        self.thread = None
+        self.thread = threading.Thread(target=self.camera.publish_feeds, args=(self.devrule,))
 
         self.get_logger().info("Cameras ready")
     
@@ -48,7 +48,7 @@ class CameraNode(Node):
             self.thread.start()
             response.success = True
             response.message = "Cameras started"
-        elif request.data == 'false':
+        else:
             self.stopped = True # the timer will stop sending inside the camera object
             self.thread.join()
             response.success = True

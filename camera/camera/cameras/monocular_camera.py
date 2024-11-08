@@ -22,8 +22,7 @@ class MonocularCamera(MonocularCameraInterface):
     def publish_feeds(self, camera_id):
         self.node.get_logger().info("REQUEST")
         camera = cv2.VideoCapture(camera_id, cv2.CAP_V4L)
-        #camera = cv2.VideoCapture(4, cv2.CAP_V4L)
-        camera.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter.fourcc('m','j','p','g'))
+        camera.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter.fourcc('M','J','P','G'))
         camera.set(cv2.CAP_PROP_FPS, 15)
 
         while True:
@@ -40,14 +39,13 @@ class MonocularCamera(MonocularCameraInterface):
                 compressed_image = self.bridge.cv2_to_compressed_imgmsg(frame)
                 self.node.cam_pubs.publish(compressed_image)
                 image_idx += 1
-                sleep(1/15)
+                sleep(1/15) # 1/15
 
             if self.node.stopped:
                 break
 
             camera = cv2.VideoCapture(camera_id, cv2.CAP_V4L)
-            #camera = cv2.VideoCapture(4, cv2.CAP_V4L) 
-            camera.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter.fourcc('m','j','p','g'))
+            camera.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter.fourcc('M','J','P','G'))
             camera.set(cv2.CAP_PROP_FPS, 15)
             sleep(1)
 
