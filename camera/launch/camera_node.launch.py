@@ -22,6 +22,7 @@ def generate_launch_description():
             {'camera_type': "monocular"},
             {'topic_service': "/ROVER/req_camera_cs_0"},
             {'topic_pub': "/ROVER/feed_camera_cs_0"},
+            {'bw_pub': "/ROVER/bw_camera_cs_0"}, 
             {'devrule': "/dev/video0"}
         ],
     )
@@ -36,6 +37,7 @@ def generate_launch_description():
             {'camera_type': "monocular"},
             {'topic_service': "/ROVER/req_camera_cs_1"},
             {'topic_pub': "/ROVER/feed_camera_cs_1"},
+            {'bw_pub': "/ROVER/bw_camera_cs_1"}, ### 
             {'devrule': "/dev/video2"}
         ],
     )
@@ -48,15 +50,17 @@ def generate_launch_description():
         parameters=[
             {'camera_type': "monocular"},
             {'topic_service': "/ROVER/req_camera_cs_2"},
-            {'topic_pub': "/ROVER/feed_camera_cs_2"},
+            {'topic_pub': "/ROVER/feed_camera_cs_2"}, 
+            {'bw_pub': "/ROVER/bw_camera_cs_2"}, ###
             {'devrule': "/dev/video4"}
         ],
     )
+
     
     return LaunchDescription(
         [
             camera_cs_0,
             camera_cs_1,
-            camera_cs_2
+            camera_cs_2,
                             ]
     )
