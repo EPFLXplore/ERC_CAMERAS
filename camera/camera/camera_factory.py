@@ -7,7 +7,6 @@ import yaml
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
-from cv2_enumerate_cameras import enumerate_cameras
 
 class CameraFactory():
             
