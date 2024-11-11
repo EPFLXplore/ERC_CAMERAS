@@ -26,19 +26,21 @@ class RealSenseStereoCamera(StereoCameraInterface):
         # config.enable_device('123622270224')
 
        
-          
+    
 
 
         self.node = node
 
-        self.qos_profile = QoSProfile(
-            reliability=QoSReliabilityPolicy.BEST_EFFORT,
-            durability=QoSDurabilityPolicy.VOLATILE,
-            history=QoSHistoryPolicy.KEEP_LAST,
-            depth=1,
-        )
-
         self.bridge = CvBridge()
+
+    #     self.mode = "RGB"
+
+    # def set_mode(self, mode) :
+    #     if mode in ["RGB", "RGB-D"]:
+    #         self.mode = mode
+    #         self.node.get_logger().info(f"Camera mode set to {self.mode}")
+    #     else:
+    #         self.node.get_logger().warn("Invalid mode selected")        
 
     def get_depth_scale(self):
         depth_scale = self.profile.get_device().first_depth_sensor().get_depth_scale()
@@ -136,31 +138,79 @@ class RealSenseStereoCamera(StereoCameraInterface):
         return color_frame      
 
     def publish_feeds(self, camera_id):#camera_id added just so it works with other cameras
-        self.node.get_logger().info("STARTING TO PUBLISH RGB")
-
+        self.node.get_logger().info("STARTING TO PUBLISH RGB") #rgb-feed
+    
         #self.config.enable_stream(rs.stream.depth, self.x, self.y, rs.format.z16, self.fps)
         self.config.enable_stream(rs.stream.color, self.x, self.y, rs.format.bgr8, self.fps)
 
-        # Start streaming from file
         self.profile = self.pipe.start(self.config)
 
-        #self.align = rs.align(rs.stream.color) 
+        self.align = rs.align(rs.stream.color) 
      
         for i in range(10):
-            frame = self.get_rgb()
+           frame = self.get_rgb()
 
         image_idx = 0
         while True:
-            self.node.get_logger().info("Capturing " + str(image_idx) + " | time: " + str(time.time()))
-            frame = self.get_rgb()
+           self.node.get_logger().info("Capturing " + str(image_idx) + " | time: " + str(time.time()))
+           frame = self.get_rgb()
 
-            if self.node.stopped:
-                self.pipe.stop()
-                break    
+           if self.node.stopped:
+               self.pipe.stop()
+               break    
             
-            compressed_image = self.bridge.cv2_to_compressed_imgmsg(frame)
-            self.node.cam_pubs.publish(compressed_image)
-            image_idx += 1
+           compressed_image = self.bridge.cv2_to_compressed_imgmsg(frame)
+           self.node.cam_pubs.publish(compressed_image)
+           image_idx += 1
             #sleep(1/self.fps)  #realsense pipeline already takes care of fps
+
+
+
+ 
+        # if self.mode == "RGB":
+
+        #     self.config.enable_stream(rs.stream.color, self.x, self.y, rs.format.bgr8, self.fps)
+
+        # elif self.mode == "RGB-D":
+        
+        #     self.config.enable_stream(rs.stream.depth, self.x, self.y, rs.format.z16, self.fps)
+        #     self.config.enable_stream(rs.stream.color, self.x, self.y, rs.format.bgr8, self.fps)
+
+        # # Start streaming from file
+        # self.profile = self.pipe.start(self.config)
+        # self.node.get_logger().info(f"Camera pipeline started in {self.mode} mode")
+
+        # if self.mode == "RGB-D":
+        #     self.align = rs.align(rs.stream.color)
+
+
+        # for i in range(10):
+        #     frame = self.get_rgb() if self.mode == "RGB" else self.get_rgbd()[0]
+
+        # image_idx = 0
+        # while not self.node.stopped:
+        #     if self.mode == "RGB":
+        #         frame = self.get_rgb()
+        #         if frame is not None:
+        #             compressed_image = self.bridge.cv2_to_compressed_imgmsg(frame)
+        #             self.node.cam_pubs.publish(compressed_image)
+        #     elif self.mode == "RGB-D":
+        #         color_frame, depth_frame = self.get_rgbd()
+        #         if color_frame is not None:
+        #             compressed_image = self.bridge.cv2_to_compressed_imgmsg(color_frame)
+        #             self.node.cam_pubs.publish(compressed_image)
+
+        #             # Optionally publish depth data on a separate topic
+        #             depth_image = self.bridge.cv2_to_compressed_imgmsg(depth_frame)
+        #             self.node.depth_pubs.publish(depth_image)
+
+        #     #self.node.get_logger().info(f"Published frame {image_idx} in {self.mode} mode")
+        #     image_idx += 1
+
+        #     if self.node.stopped:
+        #         self.pipe.stop()  
+        #         break  
+    
+        
 
             

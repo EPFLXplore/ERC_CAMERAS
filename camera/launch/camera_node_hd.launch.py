@@ -13,26 +13,6 @@ def get_package_file(package, file_path):
 
 def generate_launch_description():
 
-    camera_factory = Node(
-        package='camera',
-        executable='factory',
-        name='camera_factory',
-        namespace='/ROVER'
-    )
-
-    camera_cs_0 = Node(
-        package='camera',
-        executable='camera',
-        name='camera_cs_0',
-        namespace='/ROVER',
-        parameters=[
-            {'camera_type': "monocular"},
-            {'topic_service': "/ROVER/req_camera_cs_0"},
-            {'topic_pub': "/ROVER/feed_camera_cs_0"},
-            {'test': "/dev/video2"}
-        ],
-    )
-
     camera_hd_gripper = Node(
         package='camera',
         executable='camera',
@@ -47,8 +27,6 @@ def generate_launch_description():
     )
     return LaunchDescription(
         [
-            camera_factory,            
-            camera_cs_0,
             camera_hd_gripper
                             ]
     )

@@ -11,20 +11,12 @@ class ImageSubscriber(Node):
     def __init__(self):
         super().__init__('image_subscriber')
 
-        self.qos_profile = QoSProfile(
-            reliability=QoSReliabilityPolicy.BEST_EFFORT,
-            durability=QoSDurabilityPolicy.VOLATILE,
-            history=QoSHistoryPolicy.KEEP_LAST,
-            depth=1,
-        )
-
-
         # Create a subscriber to the camera topic
         self.subscription = self.create_subscription(
             CompressedImage,
-            '/HD/feed_camera_hd_rgb',  # Change this to match your topic
+            '/ROVER/feed_camera_hd_0',  # Change this to match your topic
             self.image_callback,
-            self.qos_profile # QoS history depth
+            10
         )
         
         

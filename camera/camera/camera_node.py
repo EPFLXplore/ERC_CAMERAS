@@ -6,7 +6,7 @@ from sensor_msgs.msg import CompressedImage
 import cv2, threading
 from std_msgs.msg import String
 from rclpy.callback_groups import ReentrantCallbackGroup, MutuallyExclusiveCallbackGroup
-
+#from custom_msg.srv import SetCameraRGBMode
 
 class CameraNode(Node):
     """
@@ -18,6 +18,9 @@ class CameraNode(Node):
 
         self.callback_group = ReentrantCallbackGroup()
         self.default = ""
+
+        # mode
+        #self.mode_service = self.create_service(SetMode, 'set_camera_mode', self.set_mode_callback)
 
         # parameters
         self.declare_parameter("camera_type", self.default)
@@ -36,10 +39,17 @@ class CameraNode(Node):
         # Service to activate the camera. For now we hardcode the parameters so we use just a SetBool
         self.get_ids = self.create_subscription(String, 'test', self.callback_ids, 10) # todo custom message
         self.service_activation = self.create_service(SetBool, self.service_topic, self.start_cameras_callback)
-        self.cam_pubs = self.create_publisher(CompressedImage, self.publisher_topic, self.camera.qos_profile, callback_group=self.callback_group)
+        self.cam_pubs = self.create_publisher(CompressedImage, self.publisher_topic, 1, callback_group=self.callback_group)
         self.thread = threading.Thread(target=self.camera.publish_feeds, args=(self.test,)) # need to get from camera factory
 
         self.get_logger().info("Cameras ready")
+    
+    # def set_mode_callback(self, request, response): #set camera mode (RGB or RGB-D)
+    #     mode = request.mode  
+    #     self.camera.set_mode(mode)
+    #     response.success = True
+    #     response.message = f"Mode set to {mode}"
+    #     return response
     
     def start_cameras_callback(self, request, response):
         if request.data:
@@ -49,6 +59,7 @@ class CameraNode(Node):
             response.success = True
             response.message = "Cameras started"
         else:
+            print("STOPPED")
             self.stopped = True # the timer will stop sending inside the camera object
             self.thread.join()
             response.success = True
