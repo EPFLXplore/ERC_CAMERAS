@@ -20,9 +20,9 @@ class MonocularCamera(MonocularCameraInterface):
         self.bridge = CvBridge()
 
     def publish_feeds(self, camera_id):
-        #camera = cv2.VideoCapture(camera_id, cv2.CAP_V4L) 046d:094c
-        camera = cv2.VideoCapture(4, cv2.CAP_V4L)
-        camera.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter.fourcc('m','j','p','g'))
+        camera = cv2.VideoCapture(camera_id, cv2.CAP_V4L)
+        #camera = cv2.VideoCapture(4, cv2.CAP_V4L)
+        camera.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter.fourcc('M','J','P','G'))
         camera.set(cv2.CAP_PROP_FPS, 15)
 
         while True:
@@ -44,9 +44,9 @@ class MonocularCamera(MonocularCameraInterface):
             if self.node.stopped:
                 break
 
-            #camera = cv2.VideoCapture(camera_id, cv2.CAP_V4L)
-            camera = cv2.VideoCapture(4, cv2.CAP_V4L) 
-            camera.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter.fourcc('m','j','p','g'))
+            camera = cv2.VideoCapture(camera_id, cv2.CAP_V4L)
+            #camera = cv2.VideoCapture(4, cv2.CAP_V4L) 
+            camera.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter.fourcc('M','J','P','G'))
             camera.set(cv2.CAP_PROP_FPS, 15)
             sleep(1)
 
