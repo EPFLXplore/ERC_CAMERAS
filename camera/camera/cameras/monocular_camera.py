@@ -4,6 +4,8 @@ from time import sleep
 import time
 from cv_bridge import CvBridge
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy, QoSDurabilityPolicy
+import sys
+from std_msgs.msg import Float32
 
 class MonocularCamera(MonocularCameraInterface):
     def __init__(self, node):
@@ -30,6 +32,7 @@ class MonocularCamera(MonocularCameraInterface):
                 ret, frame = camera.read()
 
             image_idx = 0
+            previous_time = 0
             while True:
                 self.node.get_logger().info("Capturing " + str(image_idx) + " | time: " + str(time.time()))
                 ret, frame = camera.read()
@@ -37,9 +40,18 @@ class MonocularCamera(MonocularCameraInterface):
                     break
                 
                 compressed_image = self.bridge.cv2_to_compressed_imgmsg(frame)
+                frame_size = sys.getsizeof(frame)
+                # Calculate the BW 
+                current_time = time.time()
+                elapsed_time = current_time - previous_time
+                bw = Float32()
+                bw.data = float(len(compressed_image.data))/elapsed_time  # Bandwidth in bytes per second sys.getsizeof(compressed_image)/
+                previous_time = current_time 
+
                 self.node.cam_pubs.publish(compressed_image)
+                self.node.cam_bw.publish(bw) 
                 image_idx += 1
-                sleep(1/15)
+                sleep(1/2) # 1/15
 
             if self.node.stopped:
                 break

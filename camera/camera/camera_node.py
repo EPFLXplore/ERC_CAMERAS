@@ -4,7 +4,8 @@ from std_srvs.srv import SetBool
 from .camera_factory import CameraFactory
 from sensor_msgs.msg import CompressedImage
 import cv2, threading
-from rclpy.callback_groups import ReentrantCallbackGroup
+from rclpy.callback_groups import ReentrantCallbackGroup, MutuallyExclusiveCallbackGroup
+from std_msgs.msg import Float32
 
 class CameraNode(Node):
     """
@@ -24,11 +25,13 @@ class CameraNode(Node):
         self.declare_parameter("camera_type", self.default)
         self.declare_parameter("topic_service", self.default)
         self.declare_parameter("topic_pub", self.default)
-        self.declare_parameter("test", self.default)
+        self.declare_parameter("bw_pub", self.default)
+        self.declare_parameter("devrule", self.default)
         self.camera_type = self.get_parameter("camera_type").get_parameter_value().string_value
         self.service_topic = self.get_parameter("topic_service").get_parameter_value().string_value
         self.publisher_topic = self.get_parameter("topic_pub").get_parameter_value().string_value
-        self.test = self.get_parameter("test").get_parameter_value().string_value
+        self.publisher_topic_bw = self.get_parameter("bw_pub").get_parameter_value().string_value
+        self.devrule = self.get_parameter("devrule").get_parameter_value().string_value
 
          # object camera
         self.camera =  CameraFactory.create_camera(self)
@@ -37,7 +40,9 @@ class CameraNode(Node):
         # Service to activate the camera. For now we hardcode the parameters so we use just a SetBool
         self.service_activation = self.create_service(SetBool, self.service_topic, self.start_cameras_callback)
         self.cam_pubs = self.create_publisher(CompressedImage, self.publisher_topic, 1, callback_group=self.callback_group)
-        self.thread = threading.Thread(target=self.camera.publish_feeds, args=(self.test,)) # need to get from camera factory
+        self.cam_bw = self.create_publisher(Float32, self.publisher_topic_bw, 1)
+
+        self.thread = threading.Thread(target=self.camera.publish_feeds, args=(self.devrule,))
 
         self.get_logger().info("Cameras ready")
     
@@ -51,7 +56,7 @@ class CameraNode(Node):
     def start_cameras_callback(self, request, response):
         if request.data:
             self.stopped = False # the timer will start sending inside the camera object
-            self.thread = threading.Thread(target=self.camera.publish_feeds, args=(self.test,))
+            self.thread = threading.Thread(target=self.camera.publish_feeds, args=(self.devrule,))
             self.thread.start()
             response.success = True
             response.message = "Cameras started"

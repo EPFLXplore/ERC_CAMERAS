@@ -13,13 +13,6 @@ def get_package_file(package, file_path):
 
 def generate_launch_description():
 
-    camera_factory = Node(
-        package='camera',
-        executable='factory',
-        name='camera_factory',
-        namespace='/ROVER'
-    )
-
     camera_cs_0 = Node(
         package='camera',
         executable='camera',
@@ -29,26 +22,44 @@ def generate_launch_description():
             {'camera_type': "monocular"},
             {'topic_service': "/ROVER/req_camera_cs_0"},
             {'topic_pub': "/ROVER/feed_camera_cs_0"},
-            {'test': "/dev/camera_cs_0"}
+            {'bw_pub': "/ROVER/bw_camera_cs_0"}, 
+            {'devrule': "/dev/video0"}
+        ],
+    )
+    
+    camera_cs_1 = Node(
+        package='camera',
+        executable='camera',
+        name='camera_cs_1',
+        namespace='/ROVER',
+        parameters=[
+            {'camera_type': "monocular"},
+            {'topic_service': "/ROVER/req_camera_cs_1"},
+            {'topic_pub': "/ROVER/feed_camera_cs_1"},
+            {'bw_pub': "/ROVER/bw_camera_cs_1"}, ### 
+            {'devrule': "/dev/video2"}
         ],
     )
 
-    camera_hd_gripper = Node(
+    camera_cs_2 = Node(
         package='camera',
         executable='camera',
-        name='camera_hd_gripper',
-        namespace='/HD',
+        name='camera_cs_2',
+        namespace='/ROVER',
         parameters=[
-            {'camera_type': "realsense_stereo"},
-            {'topic_service': "/ROVER/req_camera_hd_0"},
-            {'topic_pub': "/ROVER/feed_camera_hd_0"},
-            {'test': "/dev/video5"}
+            {'camera_type': "monocular"},
+            {'topic_service': "/ROVER/req_camera_cs_2"},
+            {'topic_pub': "/ROVER/feed_camera_cs_2"}, 
+            {'bw_pub': "/ROVER/bw_camera_cs_2"},
+            {'devrule': "/dev/video4"}
         ],
     )
+
+    
     return LaunchDescription(
         [
-            camera_factory,            
             camera_cs_0,
-            camera_hd_gripper
-                            ]
+            camera_cs_1,
+            camera_cs_2,
+        ]
     )
