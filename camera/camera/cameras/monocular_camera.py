@@ -12,13 +12,6 @@ class MonocularCamera(MonocularCameraInterface):
 
         self.node = node
 
-        self.qos_profile = QoSProfile(
-            reliability=QoSReliabilityPolicy.BEST_EFFORT,
-            durability=QoSDurabilityPolicy.VOLATILE,
-            history=QoSHistoryPolicy.KEEP_LAST,
-            depth=1,
-        )
-
         self.bridge = CvBridge()
 
     def publish_feeds(self, camera_id):

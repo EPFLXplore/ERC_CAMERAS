@@ -22,11 +22,12 @@ def generate_launch_description():
             {'camera_type': "realsense_stereo"},
             {'topic_service': "/ROVER/req_camera_hd_0"},
             {'topic_pub': "/ROVER/feed_camera_hd_0"},
-            {'test': "/dev/video5"}
+            {'bw_pub': "/ROVER/bw_camera_hd_0"}, 
+            {'devrule': "/dev/video5"}
         ],
     )
     return LaunchDescription(
         [
             camera_hd_gripper
-                            ]
+        ]
     )
