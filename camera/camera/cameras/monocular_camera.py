@@ -38,13 +38,13 @@ class MonocularCamera(MonocularCameraInterface):
                 current_time = time.time()
                 elapsed_time = current_time - previous_time
                 bw = Float32()
-                bw.data = float(len(compressed_image.data))/elapsed_time  # Bandwidth in bytes per second sys.getsizeof(compressed_image)/
+                bw.data = float((len(compressed_image.data) * 8) / (elapsed_time * 1_000_000))  # Bandwidth in Mbps
                 previous_time = current_time 
 
                 self.node.cam_pubs.publish(compressed_image)
                 self.node.cam_bw.publish(bw) 
                 image_idx += 1
-                sleep(1/2) # 1/15
+                sleep(1/15)
 
             if self.node.stopped:
                 break
