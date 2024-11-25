@@ -3,7 +3,7 @@
 <package format="3">
   <name>camera</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
+  <description>Camera Submodule for the ERC</description>
   <maintainer email="matthieu.andre@epfl.ch">xplore</maintainer>
   <license>TODO: License declaration</license>
 
