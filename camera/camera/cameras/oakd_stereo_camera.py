@@ -1,3 +1,6 @@
+#Author : Arno Laurie
+#Date : 21/11/2024
+
 from ..interfaces.stereo_camera_interface import StereoCameraInterface
 import depthai as dai
 import cv2
@@ -9,30 +12,26 @@ import sys
 from std_msgs.msg import Float32
 from sensor_msgs.msg import CompressedImage
 
+
 class OakDStereoCamera(StereoCameraInterface):
-    def __init__(self):
-        # Initialize OAK-D camera
+    def __init__(self, node):
         # raise NotImplementedError(f"__init__ not implemented for {self._name}")
         self.node = node
         self.bridge = CvBridge()
         self.fps = 30
 
-        # Create OAK-D pipeline
         self.pipeline = dai.Pipeline()
 
-        # Set up color camera
         self.color_cam = self.pipeline.createColorCamera()
         self.color_cam.setBoardSocket(dai.CameraBoardSocket.RGB)
         self.color_cam.setResolution(dai.ColorCameraProperties.SensorResolution.THE_1080_P)
         self.color_cam.setFps(self.fps)
 
-        # Set up stereo depth
         self.stereo = self.pipeline.createStereoDepth()
         self.stereo.setOutputDepth(True)
         self.stereo.setOutputRectified(True)
         self.stereo.setConfidenceThreshold(200)
 
-        # Set up XLink outputs
         self.rgb_out = self.pipeline.createXLinkOut()
         self.rgb_out.setStreamName("rgb")
         self.color_cam.video.link(self.rgb_out.input)
@@ -41,7 +40,6 @@ class OakDStereoCamera(StereoCameraInterface):
         self.depth_out.setStreamName("depth")
         self.stereo.depth.link(self.depth_out.input)
 
-        # Start the device
         try:
             self.device = dai.Device(self.pipeline)
             self.rgb_queue = self.device.getOutputQueue(name="rgb", maxSize=4, blocking=False)
@@ -51,13 +49,11 @@ class OakDStereoCamera(StereoCameraInterface):
             self.node.get_logger().error(f"Failed to initialize OAK-D: {e}")
             raise
 
-        # ROS Publishers
         self.cam_pubs = self.node.create_publisher(CompressedImage, '/camera/rgb/compressed', 10)
         self.cam_bw = self.node.create_publisher(Float32, '/camera/bandwidth', 10)
 
 
     def get_image(self):
-        # Implementation for getting RGB image from OAK-D
         rgb_frame = self.rgb_queue.tryGet()
         if rgb_frame is None:
             self.node.get_logger().warn("No RGB frame received.")
@@ -65,7 +61,6 @@ class OakDStereoCamera(StereoCameraInterface):
         return rgb_frame.getCvFrame()
     
     def get_depth(self):
-        # Implementation for getting depth data from OAK-D
         depth_frame = self.depth_queue.tryGet()
         if depth_frame is None:
             self.node.get_logger().warn("No depth frame received.")
@@ -73,13 +68,11 @@ class OakDStereoCamera(StereoCameraInterface):
         return depth_frame.getFrame()
 
     def get_intrinsics(self):
-        # Implementation for getting camera intrinsics from OAK-D
         calib_data = self.device.readCalibration()
         intrinsics = calib_data.getCameraIntrinsics(dai.CameraBoardSocket.RGB)
         return intrinsics
 
     def get_coeffs(self):
-        # Implementation for getting distortion coefficients from OAK-D
         calib_data = self.device.readCalibration()
         return calib_data.getDistortionCoefficients(dai.CameraBoardSocket.RGB)
     
@@ -89,7 +82,6 @@ class OakDStereoCamera(StereoCameraInterface):
         previous_time = time.time()
 
         while not self.node.stopped:
-            # Get RGB frame
             frame = self.get_image()
             if frame is None:
                 sleep(1 / self.fps)
