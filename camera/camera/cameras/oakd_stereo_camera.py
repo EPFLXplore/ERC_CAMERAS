@@ -1,5 +1,5 @@
-#Author : Arno Laurie
-#Date : 21/11/2024
+#Author : Arno Laurie TL NAV 2024/2025
+#Date : 06/12/2024
 
 from ..interfaces.stereo_camera_interface import StereoCameraInterface
 import depthai as dai
@@ -18,7 +18,7 @@ class OakDStereoCamera(StereoCameraInterface):
         # raise NotImplementedError(f"__init__ not implemented for {self._name}")
         self.node = node
         self.bridge = CvBridge()
-        self.fps = 30
+        self.fps = 24
 
         self.pipeline = dai.Pipeline()
 
@@ -48,9 +48,6 @@ class OakDStereoCamera(StereoCameraInterface):
         except Exception as e:
             self.node.get_logger().error(f"Failed to initialize OAK-D: {e}")
             raise
-
-        self.cam_pubs = self.node.create_publisher(CompressedImage, '/camera/rgb/compressed', 10)
-        self.cam_bw = self.node.create_publisher(Float32, '/camera/bandwidth', 10)
 
 
     def get_image(self):
@@ -95,13 +92,13 @@ class OakDStereoCamera(StereoCameraInterface):
             bw = Float32()
             bw.data = float((len(compressed_image.data) * 8) / (elapsed_time * 1_000_000))  # Bandwidth in Mbps
 
-            self.cam_pubs.publish(compressed_image)
-            self.cam_bw.publish(bw)
+            self.node.cam_pubs.publish(compressed_image)
+            self.node.cam_bw.publish(bw)
 
             self.node.get_logger().info(f"Captured Frame {image_idx} | Bandwidth: {bw.data:.2f} Mbps")
             image_idx += 1
 
-            sleep(1 / self.fps)  # Limit to 30 FPS
+            sleep(1 / self.fps)  # limit to target FPS
 
         # Cleanup when stopped
         self.node.get_logger().info("Stopping OAK-D feed.")

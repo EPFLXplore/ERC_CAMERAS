@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>camera</name>
-  <version>0.0.0</version>
+  <version>0.0.1</version>
   <description>Camera Submodule for the ERC</description>
   <maintainer email="matthieu.andre@epfl.ch">xplore</maintainer>
   <license>TODO: License declaration</license>
