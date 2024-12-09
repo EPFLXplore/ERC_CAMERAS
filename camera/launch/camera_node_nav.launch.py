@@ -23,9 +23,9 @@ def generate_launch_description():
         namespace='/NAV',
         parameters=[
             {'camera_type': "oakd_stereo"},
-            {'topic_service': "/ROVER/req_front_camera_nav"},
-            {'topic_pub': "/ROVER/feed_front_camera_nav"},
-            {'bw_pub': "/ROVER/bw_front_camera_nav"}, 
+            {'topic_service': "/NAV/req_front_camera_nav"},
+            {'topic_pub': "/NAV/feed_front_camera_nav"},
+            {'bw_pub': "/NAV/bw_front_camera_nav"}, 
             {'devrule': "/dev/video3"}
         ],
     )
