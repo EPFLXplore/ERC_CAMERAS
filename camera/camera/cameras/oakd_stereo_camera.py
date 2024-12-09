@@ -82,7 +82,7 @@ class OakDStereoCamera(StereoCameraInterface):
         """Retrieve an RGB frame from the RGB queue."""
         rgb_frame = self.rgb_queue.tryGet()
         if rgb_frame is None:
-            self.node.get_logger().warn("No RGB frame received.")
+            #self.node.get_logger().warn("No RGB frame received.")
             return None
         return rgb_frame.getCvFrame()
 
@@ -91,7 +91,7 @@ class OakDStereoCamera(StereoCameraInterface):
         rgb_frame = self.get_rgb()
         depth_frame = self.get_depth()
         if rgb_frame is None or depth_frame is None:
-            self.node.get_logger().warn("No RGB or Depth frame received.")
+            #self.node.get_logger().warn("No RGB or Depth frame received.")
             return None, None
         return rgb_frame, depth_frame
 
@@ -99,7 +99,7 @@ class OakDStereoCamera(StereoCameraInterface):
         """Retrieve a Depth frame from the Depth queue."""
         depth_frame = self.depth_queue.tryGet()
         if depth_frame is None:
-            self.node.get_logger().warn("No depth frame received.")
+            #self.node.get_logger().warn("No depth frame received.")
             return None
         return depth_frame.getFrame()
 
@@ -126,13 +126,13 @@ class OakDStereoCamera(StereoCameraInterface):
                 self.cam_pubs.publish(compressed_rgb)
 
             # Get Depth Frame
-            depth_img = self.get_depth()
-            if depth_img is not None:
+            #depth_img = self.get_depth()
+            #if depth_img is not None:
                 # Normalize depth image for visualization
-                depth_img_normalized = cv2.normalize(depth_img, None, 0, 255, cv2.NORM_MINMAX)
-                depth_img_colored = cv2.applyColorMap(depth_img_normalized.astype('uint8'), cv2.COLORMAP_JET)
-                compressed_depth = self.bridge.cv2_to_compressed_imgmsg(depth_img_colored, dst_format="jpeg")
-                self.depth_pubs.publish(compressed_depth)
+                #depth_img_normalized = cv2.normalize(depth_img, None, 0, 255, cv2.NORM_MINMAX)
+                #depth_img_colored = cv2.applyColorMap(depth_img_normalized.astype('uint8'), cv2.COLORMAP_JET)
+                #compressed_depth = self.bridge.cv2_to_compressed_imgmsg(depth_img_colored, dst_format="jpeg")
+                #self.depth_pubs.publish(compressed_depth)
 
             # Bandwidth Calculation
             current_time = time.time()
@@ -144,7 +144,7 @@ class OakDStereoCamera(StereoCameraInterface):
 
             self.cam_bw.publish(bw)
 
-            self.node.get_logger().info(f"Captured Frame {image_idx} | Bandwidth: {bw.data:.2f} Mbps")
+            #self.node.get_logger().info(f"Captured Frame {image_idx} | Bandwidth: {bw.data:.2f} Mbps")
             image_idx += 1
 
             time.sleep(1 / self.fps)
