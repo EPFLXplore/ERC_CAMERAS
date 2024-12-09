@@ -23,10 +23,10 @@ def generate_launch_description():
         namespace='/NAV',
         parameters=[
             {'camera_type': "oakd_stereo"},
-            {'topic_service': "/NAV/req_front_camera_nav"},
-            {'topic_pub': "/NAV/feed_front_camera_nav"},
-            {'bw_pub': "/NAV/bw_front_camera_nav"}, 
-            {'devrule': "/dev/video3"}
+            {'topic_service': "/NAV/req_camera_nav_0"},
+            {'topic_pub': "/NAV/feed_camera_nav_0"},
+            {'bw_pub': "/NAV/bw_camera_nav_0"}, 
+            #the devrule is already in the dockerfile
         ],
     )
     return LaunchDescription(

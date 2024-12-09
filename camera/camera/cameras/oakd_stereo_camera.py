@@ -23,16 +23,16 @@ class OakDStereoCamera(StereoCameraInterface):
         self.pipeline = dai.Pipeline()
 
         #mono = black and white image from the left and right cams
-        # self.mono_left = self.pipeline.createMonoCamera()
-        # self.mono_right = self.pipeline.createMonoCamera()
 
-        # self.mono_left.setBoardSocket(dai.CameraBoardSocket.LEFT)
-        # self.mono_right.setBoardSocket(dai.CameraBoardSocket.RIGHT)
-        # self.mono_left.setResolution(dai.MonoCameraProperties.SensorResolution.THE_720_P)
-        # self.mono_right.setResolution(dai.MonoCameraProperties.SensorResolution.THE_720_P)
+        self.mono_left = self.pipeline.createMonoCamera()
+        self.mono_right = self.pipeline.createMonoCamera()
 
-        # self.mono_left.out.link(self.stereo.left)
-        # self.mono_right.out.link(self.stereo.right)
+        self.mono_left.setBoardSocket(dai.CameraBoardSocket.LEFT)
+        self.mono_right.setBoardSocket(dai.CameraBoardSocket.RIGHT)
+
+        self.mono_left.setResolution(dai.MonoCameraProperties.SensorResolution.THE_720_P)
+        self.mono_right.setResolution(dai.MonoCameraProperties.SensorResolution.THE_720_P)
+
 
         # ColorCamera = rgb output from the oakd  
         self.color_cam = self.pipeline.createColorCamera()
@@ -47,6 +47,10 @@ class OakDStereoCamera(StereoCameraInterface):
         self.stereo.setOutputDepth(True)
         self.stereo.setOutputRectified(True)
         self.stereo.setConfidenceThreshold(200)
+
+        # Link Mono Cameras to Stereo Depth
+        self.mono_left.out.link(self.stereo.left)
+        self.mono_right.out.link(self.stereo.right)
 
          # Link ColorCamera video output to XLinkOut for streaming rgb frames
         self.rgb_out = self.pipeline.createXLinkOut()
@@ -73,14 +77,26 @@ class OakDStereoCamera(StereoCameraInterface):
         self.depth_pubs = self.node.create_publisher(CompressedImage, self.node.publisher_topic + "/depth", 1)
 
 
-    def get_image(self):
+
+    def get_rgb(self):
+        """Retrieve an RGB frame from the RGB queue."""
         rgb_frame = self.rgb_queue.tryGet()
         if rgb_frame is None:
             self.node.get_logger().warn("No RGB frame received.")
             return None
         return rgb_frame.getCvFrame()
-    
+
+    def get_rgbd(self):
+        """Retrieve both RGB and Depth frames."""
+        rgb_frame = self.get_rgb()
+        depth_frame = self.get_depth()
+        if rgb_frame is None or depth_frame is None:
+            self.node.get_logger().warn("No RGB or Depth frame received.")
+            return None, None
+        return rgb_frame, depth_frame
+
     def get_depth(self):
+        """Retrieve a Depth frame from the Depth queue."""
         depth_frame = self.depth_queue.tryGet()
         if depth_frame is None:
             self.node.get_logger().warn("No depth frame received.")
@@ -96,20 +112,21 @@ class OakDStereoCamera(StereoCameraInterface):
         calib_data = self.device.readCalibration()
         return calib_data.getDistortionCoefficients(dai.CameraBoardSocket.RGB)
     
-    def publish_feeds(self, devrule = None):
+    def publish_feeds(self, devrule=None):
+        """Publish RGB and Depth feeds."""
         self.node.get_logger().info("Starting to publish RGB and Depth feeds from OAK-D camera.")
         image_idx = 0
         previous_time = time.time()
 
         while not self.node.stopped:
             # Get RGB Frame
-            rgb_img = self.get_rgb_image()
+            rgb_img = self.get_rgb()
             if rgb_img is not None:
                 compressed_rgb = self.bridge.cv2_to_compressed_imgmsg(rgb_img, dst_format="jpeg")
                 self.cam_pubs.publish(compressed_rgb)
 
             # Get Depth Frame
-            depth_img = self.get_depth_image()
+            depth_img = self.get_depth()
             if depth_img is not None:
                 # Normalize depth image for visualization
                 depth_img_normalized = cv2.normalize(depth_img, None, 0, 255, cv2.NORM_MINMAX)
