@@ -1,4 +1,4 @@
-from .cameras.realsense_stereo_camera import RealSenseStereoCamera
+#from .cameras.realsense_stereo_camera import RealSenseStereoCamera
 from .cameras.mock_monocular_camera import MockMonocularCamera
 from .cameras.mock_stereo_camera import MockStereoCamera
 from .cameras.monocular_camera import MonocularCamera
@@ -13,7 +13,14 @@ class CameraFactory():
     @staticmethod
     def create_camera(node):
         if node.camera_type == "realsense_stereo":
-            return RealSenseStereoCamera(node)
+            #problem with the current dockerfile : pyrealsense2 isn't detected
+            #you need to manually pip install it once the dockerfile is running
+            try:
+                from .cameras.realsense_stereo_camera import RealSenseStereoCamera
+                return RealSenseStereoCamera(node)
+            except ModuleNotFoundError:
+                node.get_logger().error("RealSenseStereoCamera requires 'pyrealsense2' which is not installed.")
+                raise
         elif node.camera_type == "oakd_stereo":
             return OakDStereoCamera(node)
         elif node.camera_type == "monocular":

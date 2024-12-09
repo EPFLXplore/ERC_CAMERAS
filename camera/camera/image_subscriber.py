@@ -14,7 +14,7 @@ class ImageSubscriber(Node):
         # Create a subscriber to the camera topic
         self.subscription = self.create_subscription(
             CompressedImage,
-            '/ROVER/feed_camera_hd_0',  # Change this to match your topic
+            '/NAV/feed_front_camera_nav',  # Change this to match your topic
             self.image_callback,
             10
         )
