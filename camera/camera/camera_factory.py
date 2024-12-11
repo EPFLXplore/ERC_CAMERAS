@@ -1,8 +1,6 @@
-#from .cameras.realsense_stereo_camera import RealSenseStereoCamera
 from .cameras.mock_monocular_camera import MockMonocularCamera
 from .cameras.mock_stereo_camera import MockStereoCamera
 from .cameras.monocular_camera import MonocularCamera
-from .cameras.oakd_stereo_camera import OakDStereoCamera
 import yaml
 import rclpy
 from rclpy.node import Node
@@ -22,7 +20,12 @@ class CameraFactory():
                 node.get_logger().error("RealSenseStereoCamera requires 'pyrealsense2' which is not installed.")
                 raise
         elif node.camera_type == "oakd_stereo":
-            return OakDStereoCamera(node)
+            try:
+                from .cameras.oakd_stereo_camera import OakDStereoCamera
+                return OakDStereoCamera(node)
+            except ModuleNotFoundError:
+                node.get_logger().error("OakDStereoCamera requires 'depthai' which is not installed.")
+                raise
         elif node.camera_type == "monocular":
             return MonocularCamera(node)
         elif node.camera_type == "mock_stereo":
