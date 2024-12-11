@@ -13,7 +13,7 @@ class RealSenseStereoCamera(StereoCameraInterface):
     def __init__(self, node):
         # the configuration of each camera will be implemented on the CS side
         # need to hardcode now in the code the config
-        self.fps = 30
+        self.fps = 10
         self.x = 1280#640
         self.y = 720#480
 
@@ -23,11 +23,7 @@ class RealSenseStereoCamera(StereoCameraInterface):
 
         # TODO: Add a configuration object for the pipeline.
         self.config = rs.config()
-        # config.enable_device('123622270224')
-
-       
-    
-
+        self.config.enable_device('218622278049') # on the camera it's written
 
         self.node = node
 
