@@ -3,6 +3,11 @@ from rclpy.node import Node
 from sensor_msgs.msg import Image
 import numpy as np
 
+'''
+Author: Unknown
+Year: 2024
+Description: Fake Depth Publisher for Testing
+'''
 
 class DepthImagePublisher(Node):
     def __init__(self):

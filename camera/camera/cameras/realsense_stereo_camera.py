@@ -13,25 +13,44 @@ class RealSenseStereoCamera(StereoCameraInterface):
     def __init__(self, node):
         # the configuration of each camera will be implemented on the CS side
         # need to hardcode now in the code the config
-        self.fps = 30
-        self.x = 1280#640
-        self.y = 720#480
-
-        #TODO: Add parameter to select realsense camera by serial number
-
-        self.pipe = rs.pipeline()  # Create a RealSense pipeline object.
-
-        # TODO: Add a configuration object for the pipeline.
-        self.config = rs.config()
-        # config.enable_device('123622270224')
-
-       
-    
-
 
         self.node = node
 
+        self.fps = 15
+        self.x = 1280
+        self.y = 720
+
+        self.pipe = rs.pipeline()  # Create a RealSense pipeline object.
+        self.config = rs.config()
+
+        #this 10212206... number is the serial number of the left aruco camera
+        #TODO: we have yet to find a way to get two same realsense cameras to get connected
+        #using the dev rule pipeline of ERC_CAMERAS
+        self.context = rs.context()
+        self.devices = self.context.query_devices()
+
+        
+        if len(self.devices) == 0:
+            self.node.get_logger().error("No RealSense devices found!")
+            raise RuntimeError("No RealSense devices found!")
+
+        for dev in self.devices:
+            dev.hardware_reset() #fix the timeout problem
+            self.node.get_logger().info(f"Resetting RealSense device")
+            time.sleep(7)
+        
+        self.devices = self.context.query_devices()
+
+        if len(self.devices) == 0:
+            self.node.get_logger().error("No RealSense devices found after reset!")
+            raise RuntimeError("No RealSense devices found after reset!")
+
+
         self.bridge = CvBridge()
+        self.config.enable_device('102122061110')
+
+
+
 
     #     self.mode = "RGB"
 
@@ -133,36 +152,64 @@ class RealSenseStereoCamera(StereoCameraInterface):
         return color_frame, depth_frame
     
     def get_rgb(self):
-        frameset = self.pipe.wait_for_frames()
-        color_frame = np.asanyarray((frameset.get_color_frame().get_data()))
-        return color_frame      
+        # frameset = self.pipe.wait_for_frames()
+        # color_frame = np.asanyarray((frameset.get_color_frame().get_data()))
+        # return color_frame   
+        try:
+            frameset = self.pipe.wait_for_frames()
+            color_frame = frameset.get_color_frame()
+            if not color_frame:
+                raise RuntimeError("No color frame received")
+            color = np.asanyarray(color_frame.get_data())
+            return color
+        except RuntimeError as e:
+            self.node.get_logger().error(f"Error getting RGB frame: {e}")
+            return None
+   
 
     def publish_feeds(self, camera_id):#camera_id added just so it works with other cameras
+        # if camera_id == "/dev/realsense_aruco_0":
+        #     target_serial = "102122061110"  # Replace with your actual serial number
+        #     self.config.enable_device(target_serial)
+        #     self.node.get_logger().info(f"Detected RealSense D415 camera with serial number: {target_serial}")
+
+        # Check if any RealSense devices are connected
+
+        
         self.node.get_logger().info("STARTING TO PUBLISH RGB") #rgb-feed
     
         #self.config.enable_stream(rs.stream.depth, self.x, self.y, rs.format.z16, self.fps)
-        self.config.enable_stream(rs.stream.color, self.x, self.y, rs.format.bgr8, self.fps)
+        try:
+            self.config.enable_stream(rs.stream.color, self.x, self.y, rs.format.bgr8, self.fps)
+            self.profile = self.pipe.start(self.config)
+            self.align = rs.align(rs.stream.color)
+        except Exception as e:
+            self.node.get_logger().error(f"Failed to start RealSense pipeline: {e}")
+            return
 
-        self.profile = self.pipe.start(self.config)
-
-        self.align = rs.align(rs.stream.color) 
      
         for i in range(10):
-           frame = self.get_rgb()
+            frame = self.get_rgb()
+            if frame is None:
+                self.node.get_logger().warn("Skipping frame initialization due to missing RGB frame")
+        
+            image_idx = 0
+            try:
+                while True:
+                    self.node.get_logger().info("Capturing " + str(image_idx) + " | time: " + str(time.time()))
+                    frame = self.get_rgb()
 
-        image_idx = 0
-        while True:
-           self.node.get_logger().info("Capturing " + str(image_idx) + " | time: " + str(time.time()))
-           frame = self.get_rgb()
-
-           if self.node.stopped:
-               self.pipe.stop()
-               break    
-            
-           compressed_image = self.bridge.cv2_to_compressed_imgmsg(frame)
-           self.node.cam_pubs.publish(compressed_image)
-           image_idx += 1
-            #sleep(1/self.fps)  #realsense pipeline already takes care of fps
+                    if self.node.stopped:
+                        self.pipe.stop()
+                        break    
+                        
+                    compressed_image = self.bridge.cv2_to_compressed_imgmsg(frame)
+                    self.node.cam_pubs.publish(compressed_image)
+                    image_idx += 1
+            finally:
+                self.pipe.stop()
+                self.node.get_logger().info("Stopped RealSense pipeline")
+                #sleep(1/self.fps)  #realsense pipeline already takes care of fps
 
 
 

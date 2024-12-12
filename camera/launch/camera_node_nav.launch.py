@@ -29,8 +29,24 @@ def generate_launch_description():
             #the devrule is already in the dockerfile
         ],
     )
+
+    nav_realsense_aruco_camera_left = Node(
+        package='camera',
+        executable='camera',
+        name='camera_aruco_left',
+        namespace='/NAV',
+        parameters=[
+            {'camera_type': "realsense_stereo"},
+            {'topic_service': "/NAV/req_camera_nav_1"},
+            {'topic_pub': "/NAV/feed_camera_nav_1"},
+            {'bw_pub': "/NAV/bw_camera_nav_1"}, 
+            {'devrule': "/dev/realsense_aruco_0"}
+        ],
+    )
+
     return LaunchDescription(
         [
+            #nav_realsense_aruco_camera_left,
             nav_front_camera
         ]
     )

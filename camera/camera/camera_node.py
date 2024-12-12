@@ -4,12 +4,12 @@ from std_srvs.srv import SetBool
 from .camera_factory import CameraFactory
 from sensor_msgs.msg import CompressedImage
 import cv2, threading
-from rclpy.callback_groups import ReentrantCallbackGroup, MutuallyExclusiveCallbackGroup
+from rclpy.callback_groups import ReentrantCallbackGroup
 from std_msgs.msg import Float32
 
 class CameraNode(Node):
     """
-    Create a CameraNode class
+    Create a CameraNode
     """
 
     def __init__(self):
@@ -17,9 +17,6 @@ class CameraNode(Node):
 
         self.callback_group = ReentrantCallbackGroup()
         self.default = ""
-
-        # mode
-        #self.mode_service = self.create_service(SetMode, 'set_camera_mode', self.set_mode_callback)
 
         # parameters
         self.declare_parameter("camera_type", self.default)
@@ -49,31 +46,34 @@ class CameraNode(Node):
 
         self.get_logger().info("Cameras ready")
     
-    # def set_mode_callback(self, request, response): #set camera mode (RGB or RGB-D)
-    #     mode = request.mode  
-    #     self.camera.set_mode(mode)
-    #     response.success = True
-    #     response.message = f"Mode set to {mode}"
-    #     return response
-    
     def start_cameras_callback(self, request, response):
         if request.data:
-            self.stopped = False # the timer will start sending inside the camera object
-            if self.camera_type == "oakd_stereo": 
-                # the oakd camera does not show up as a typical /dev/video output.
-                #it does not have a classical udev rule, the oakd udev rule is done in the dockerfile
-                self.thread = threading.Thread(target=self.camera.publish_feeds)
+            self.stopped = False
+            # Only start the thread if it's not already running
+            if not hasattr(self, 'thread') or not self.thread.is_alive():
+                if self.camera_type == "oakd_stereo": 
+                    self.thread = threading.Thread(target=self.camera.publish_feeds)
+                elif self.camera_type == "realsense_stereo":
+                    self.thread = threading.Thread(target=self.camera.publish_feeds, args=(self.devrule,))
+                else:
+                    self.thread = threading.Thread(target=self.camera.publish_feeds, args=(self.devrule,))
+                
+                self.thread.start()
+                response.success = True
+                response.message = "Cameras started"
             else:
-                self.thread = threading.Thread(target=self.camera.publish_feeds, args=(self.devrule,))
-            
-            self.thread.start()
-            response.success = True
-            response.message = "Cameras started"
+                response.success = False
+                response.message = "Cameras are already running"
         else:
-            self.stopped = True # the timer will stop sending inside the camera object
-            self.thread.join()
-            response.success = True
-            response.message = "Cameras stopped"
+            # Stop the thread only if it has been started and is still running
+            if hasattr(self, 'thread') and self.thread.is_alive():
+                self.stopped = True
+                self.thread.join()
+                response.success = True
+                response.message = "Cameras stopped"
+            else:
+                response.success = False
+                response.message = "No camera thread to stop"
 
         return response
 

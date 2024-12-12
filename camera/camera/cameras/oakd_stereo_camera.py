@@ -18,7 +18,7 @@ class OakDStereoCamera(StereoCameraInterface):
         # raise NotImplementedError(f"__init__ not implemented for {self._name}")
         self.node = node
         self.bridge = CvBridge()
-        self.fps = 24
+        self.fps = 10
 
         self.pipeline = dai.Pipeline()
 
@@ -37,7 +37,7 @@ class OakDStereoCamera(StereoCameraInterface):
         # ColorCamera = rgb output from the oakd  
         self.color_cam = self.pipeline.createColorCamera()
         self.color_cam.setBoardSocket(dai.CameraBoardSocket.RGB)
-        self.color_cam.setResolution(dai.ColorCameraProperties.SensorResolution.THE_1080_P)
+        self.color_cam.setResolution(dai.ColorCameraProperties.SensorResolution.THE_720_P)
         self.color_cam.setFps(self.fps)
         self.color_cam.setInterleaved(False)  
         # Non-interleaved frames for better compatibility with ros2 and opencv
