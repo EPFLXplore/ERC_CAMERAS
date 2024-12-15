@@ -5,6 +5,7 @@ from .camera_factory import CameraFactory
 from sensor_msgs.msg import CompressedImage
 import cv2, threading
 from rclpy.callback_groups import ReentrantCallbackGroup
+from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy, QoSDurabilityPolicy
 from std_msgs.msg import Float32
 
 class CameraNode(Node):
@@ -29,6 +30,13 @@ class CameraNode(Node):
         self.publisher_topic = self.get_parameter("topic_pub").get_parameter_value().string_value
         self.publisher_topic_bw = self.get_parameter("bw_pub").get_parameter_value().string_value
         self.devrule = self.get_parameter("devrule").get_parameter_value().string_value
+
+        qos_profile = QoSProfile(
+            reliability=QoSReliabilityPolicy.BEST_EFFORT, # BEST_EFFORT: message will attempt to send message but if it fails it will not try again
+            durability=QoSDurabilityPolicy.VOLATILE, # VOLATILE: if no subscribers are listening, the message sent is not saved
+            history=QoSHistoryPolicy.KEEP_LAST, # KEEP_LAST: only the last n = depth messages are stored in the queue
+            depth=1,
+        )
 
         # Initialize publishers before creating the camera instance
         self.cam_pubs = self.create_publisher(CompressedImage, self.publisher_topic, 1, callback_group=self.callback_group)
