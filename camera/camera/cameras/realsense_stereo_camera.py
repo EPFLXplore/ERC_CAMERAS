@@ -30,20 +30,20 @@ class RealSenseStereoCamera(StereoCameraInterface):
         self.devices = self.context.query_devices()
 
         
-        if len(self.devices) == 0:
-            self.node.get_logger().error("No RealSense devices found!")
-            raise RuntimeError("No RealSense devices found!")
+        # if len(self.devices) == 0:
+        #     self.node.get_logger().error("No RealSense devices found!")
+        #     raise RuntimeError("No RealSense devices found!")
 
-        for dev in self.devices:
-            dev.hardware_reset() #fix the timeout problem
-            self.node.get_logger().info(f"Resetting RealSense device")
-            time.sleep(7)
+        #for dev in self.devices:
+            #dev.hardware_reset() #fix the timeout problem
+            #self.node.get_logger().info(f"Resetting RealSense device")
+            #time.sleep(7)
         
-        self.devices = self.context.query_devices()
+        #self.devices = self.context.query_devices()
 
         if len(self.devices) == 0:
-            self.node.get_logger().error("No RealSense devices found after reset!")
-            raise RuntimeError("No RealSense devices found after reset!")
+            self.node.get_logger().error("No RealSense devices found")
+            raise RuntimeError("No RealSense devices found")
 
 
         self.bridge = CvBridge()

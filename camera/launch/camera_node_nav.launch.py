@@ -46,7 +46,7 @@ def generate_launch_description():
 
     return LaunchDescription(
         [
-            #nav_realsense_aruco_camera_left,
-            nav_front_camera
+            nav_realsense_aruco_camera_left,
+            #nav_front_camera
         ]
     )
