@@ -18,7 +18,7 @@ class OakDStereoCamera(StereoCameraInterface):
         # raise NotImplementedError(f"__init__ not implemented for {self._name}")
         self.node = node
         self.bridge = CvBridge()
-        self.fps = 10
+        self.fps = 15
 
         self.pipeline = dai.Pipeline()
 
@@ -30,8 +30,8 @@ class OakDStereoCamera(StereoCameraInterface):
         self.mono_left.setBoardSocket(dai.CameraBoardSocket.LEFT)
         self.mono_right.setBoardSocket(dai.CameraBoardSocket.RIGHT)
 
-        self.mono_left.setResolution(dai.MonoCameraProperties.SensorResolution.THE_720_P)
-        self.mono_right.setResolution(dai.MonoCameraProperties.SensorResolution.THE_720_P)
+        self.mono_left.setResolution(dai.MonoCameraProperties.SensorResolution.THE_480_P)
+        self.mono_right.setResolution(dai.MonoCameraProperties.SensorResolution.THE_480_P)
 
 
         # ColorCamera = rgb output from the oakd  
@@ -72,10 +72,7 @@ class OakDStereoCamera(StereoCameraInterface):
             self.node.get_logger().error(f"Failed to initialize OAK-D: {e}")
             raise
 
-        self.cam_pubs = self.node.cam_pubs
-        self.cam_bw = self.node.cam_bw
         self.depth_pubs = self.node.create_publisher(CompressedImage, self.node.publisher_topic + "/depth", 1)
-
 
 
     def get_rgb(self):
@@ -115,15 +112,30 @@ class OakDStereoCamera(StereoCameraInterface):
     def publish_feeds(self, devrule=None):
         """Publish RGB and Depth feeds."""
         self.node.get_logger().info("Starting to publish RGB and Depth feeds from OAK-D camera.")
-        image_idx = 0
-        previous_time = time.time()
+        previous_time = 0
 
+        encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 10]  # Lower quality to save bandwidth
+        image_idx = 0
         while not self.node.stopped:
-            # Get RGB Frame
+
             rgb_img = self.get_rgb()
             if rgb_img is not None:
-                compressed_rgb = self.bridge.cv2_to_compressed_imgmsg(rgb_img, dst_format="jpeg")
-                self.cam_pubs.publish(compressed_rgb)
+
+                # Compress RGB frame with lower quality
+                success, encoded_image = cv2.imencode('.jpg', rgb_img, encode_param)
+                if not success:
+                    self.node.get_logger().warn("Failed to compress RGB frame.")
+                    continue
+
+                #if image_idx % 3 == 0:
+
+                #encoded_image = cv2.resize(encoded_image, (480, 360))
+
+                # Convert encoded bytes to ROS-compressed message
+                compressed_msg = CompressedImage()
+                compressed_msg.format = "jpeg"
+                compressed_msg.data = encoded_image.tobytes()  # Convert encoded image to bytes
+                self.node.cam_pubs.publish(compressed_msg)
 
             # Get Depth Frame
             #depth_img = self.get_depth()
@@ -137,17 +149,14 @@ class OakDStereoCamera(StereoCameraInterface):
             # Bandwidth Calculation
             current_time = time.time()
             elapsed_time = max(current_time - previous_time, 1e-8)
-            previous_time = current_time
 
             bw = Float32()
-            bw.data = float((len(compressed_rgb.data) * 8) / (elapsed_time * 1_000_000))
+            bw.data = float((len(compressed_msg.data) * 8) / (elapsed_time * 1_000_000))
+            previous_time = current_time
 
-            self.cam_bw.publish(bw)
-
-            #self.node.get_logger().info(f"Captured Frame {image_idx} | Bandwidth: {bw.data:.2f} Mbps")
+            self.node.cam_bw.publish(bw)
             image_idx += 1
-
-            time.sleep(1 / self.fps)
+            #time.sleep(1 / self.fps)
 
         self.node.get_logger().info("Stopping OAK-D feed.")
         self.device.close()
