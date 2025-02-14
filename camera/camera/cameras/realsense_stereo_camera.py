@@ -1,4 +1,6 @@
+
 import pyrealsense2 as rs
+#import pyrealsense2.pyrealsense2 as rs
 import numpy as np
 import cv2 as cv
 import yaml
@@ -20,12 +22,11 @@ class RealSenseStereoCamera(StereoCameraInterface):
         self.x = 1280
         self.y = 720
 
-        self.pipe = rs.pipeline()  # Create a RealSense pipeline object.
-        self.config = rs.config()
+        self.serial_number = self.node.devrule  #we do a bit of cheating
 
-        #this 10212206... number is the serial number of the left aruco camera
-        #TODO: we have yet to find a way to get two same realsense cameras to get connected
-        #using the dev rule pipeline of ERC_CAMERAS
+        self.pipe = rs.pipeline()  # Create a RealSense pipeline object.
+        self.config = rs.config()  # Disable the depth stream, keep only the RGB stream
+
         self.context = rs.context()
         self.devices = self.context.query_devices()
 
@@ -34,22 +35,33 @@ class RealSenseStereoCamera(StereoCameraInterface):
             self.node.get_logger().error("No RealSense devices found!")
             raise RuntimeError("No RealSense devices found!")
 
+        found = False
         for dev in self.devices:
-            dev.hardware_reset() #fix the timeout problem
-            self.node.get_logger().info(f"Resetting RealSense device")
-            time.sleep(7)
+            serial = dev.get_info(rs.camera_info.serial_number)
+            self.node.get_logger().info(f"Device serial: {serial}")
+            if serial == self.serial_number:
+                found = True
+                break
+        if not found:
+            self.node.get_logger().error(f"Device with serial {self.serial_number} not found!")
+            raise RuntimeError(f"Device with serial {self.serial_number} not found!")
         
-        self.devices = self.context.query_devices()
 
-        if len(self.devices) == 0:
-            self.node.get_logger().error("No RealSense devices found after reset!")
-            raise RuntimeError("No RealSense devices found after reset!")
+        #for dev in self.devices:
+        #    dev.hardware_reset() #fix the timeout problem
+        #    self.node.get_logger().info(f"Resetting RealSense device")
+        #    time.sleep(7)
+        
+        #self.devices = self.context.query_devices()
+
+        #if len(self.devices) == 0:
+        #    self.node.get_logger().error("No RealSense devices found after reset!")
+        #    raise RuntimeError("No RealSense devices found after reset!")
 
 
         self.bridge = CvBridge()
-        self.config.enable_device('102122061110')
-
-
+        self.config.enable_device(self.serial_number)
+        self.node.get_logger().info("enabled realsense d415 device")
 
 
     #     self.mode = "RGB"

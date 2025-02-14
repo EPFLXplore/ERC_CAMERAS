@@ -43,28 +43,37 @@ class CameraNode(Node):
 
 
         self.thread = threading.Thread(target=self.camera.publish_feeds, args=(self.devrule,))
-
+    
         self.get_logger().info("Cameras ready")
     
     def start_cameras_callback(self, request, response):
+        self.get_logger().info("in func")
         if request.data:
             self.stopped = False
+            self.get_logger().info("before first ifffff")
+
             # Only start the thread if it's not already running
             if not hasattr(self, 'thread') or not self.thread.is_alive():
                 if self.camera_type == "oakd_stereo": 
+                    self.get_logger().info("inside oakd_stereo")
                     self.thread = threading.Thread(target=self.camera.publish_feeds)
                 elif self.camera_type == "realsense_stereo":
+                    self.get_logger().info("inside realsense_stereo")
                     self.thread = threading.Thread(target=self.camera.publish_feeds, args=(self.devrule,))
                 else:
                     self.thread = threading.Thread(target=self.camera.publish_feeds, args=(self.devrule,))
                 
+                self.get_logger().info("before starting thread")
                 self.thread.start()
                 response.success = True
                 response.message = "Cameras started"
             else:
+                self.get_logger().info("inside first else")
                 response.success = False
                 response.message = "Cameras are already running"
         else:
+            self.get_logger().info("inside second else")
+
             # Stop the thread only if it has been started and is still running
             if hasattr(self, 'thread') and self.thread.is_alive():
                 self.stopped = True

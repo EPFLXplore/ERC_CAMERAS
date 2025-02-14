@@ -1,5 +1,6 @@
 #Author : Arno Laurie
-#Date : 09/12/2024
+#Last Updated : 09/12/2024
+#Status : working ?
 
 from ..interfaces.stereo_camera_interface import StereoCameraInterface
 import depthai as dai
