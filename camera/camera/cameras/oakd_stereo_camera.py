@@ -19,7 +19,7 @@ class OakDStereoCamera(StereoCameraInterface):
         # raise NotImplementedError(f"__init__ not implemented for {self._name}")
         self.node = node
         self.bridge = CvBridge()
-        self.fps = 10
+        self.fps = 15
 
         self.pipeline = dai.Pipeline()
 
@@ -118,13 +118,28 @@ class OakDStereoCamera(StereoCameraInterface):
         self.node.get_logger().info("Starting to publish RGB and Depth feeds from OAK-D camera.")
         image_idx = 0
         previous_time = time.time()
-
+        encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 10]  # Lower quality to save bandwidth
         while not self.node.stopped:
             # Get RGB Frame
             rgb_img = self.get_rgb()
             if rgb_img is not None:
-                compressed_rgb = self.bridge.cv2_to_compressed_imgmsg(rgb_img, dst_format="jpeg")
-                self.cam_pubs.publish(compressed_rgb)
+                # Compress RGB frame with lower quality
+                success, encoded_image = cv2.imencode('.jpg', rgb_img, encode_param)
+                if not success:
+                    self.node.get_logger().warn("Failed to compress RGB frame.")
+                    continue
+
+                #if image_idx % 3 == 0:
+
+                #encoded_image = cv2.resize(encoded_image, (480, 360))
+
+                # Convert encoded bytes to ROS-compressed message
+                compressed_msg = CompressedImage()
+                compressed_msg.format = "jpeg"
+                compressed_msg.data = encoded_image.tobytes()  # Convert encoded image to bytes
+                self.node.cam_pubs.publish(compressed_msg)
+                # compressed_rgb = self.bridge.cv2_to_compressed_imgmsg(rgb_img, dst_format="jpeg")
+                # self.cam_pubs.publish(compressed_rgb)
 
             # Get Depth Frame
             #depth_img = self.get_depth()
@@ -141,9 +156,9 @@ class OakDStereoCamera(StereoCameraInterface):
             previous_time = current_time
 
             bw = Float32()
-            bw.data = float((len(compressed_rgb.data) * 8) / (elapsed_time * 1_000_000))
+            #bw.data = float((len(compressed_rgb.data) * 8) / (elapsed_time * 1_000_000))
 
-            self.cam_bw.publish(bw)
+            #self.cam_bw.publish(bw)
 
             #self.node.get_logger().info(f"Captured Frame {image_idx} | Bandwidth: {bw.data:.2f} Mbps")
             image_idx += 1

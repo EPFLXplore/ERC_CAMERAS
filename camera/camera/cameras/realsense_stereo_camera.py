@@ -35,43 +35,18 @@ class RealSenseStereoCamera(StereoCameraInterface):
             self.node.get_logger().error("No RealSense devices found!")
             raise RuntimeError("No RealSense devices found!")
 
-        found = False
-        for dev in self.devices:
-            serial = dev.get_info(rs.camera_info.serial_number)
-            self.node.get_logger().info(f"Device serial: {serial}")
-            if serial == self.serial_number:
-                found = True
-                break
-        if not found:
-            self.node.get_logger().error(f"Device with serial {self.serial_number} not found!")
-            raise RuntimeError(f"Device with serial {self.serial_number} not found!")
-        
-
-        #for dev in self.devices:
-        #    dev.hardware_reset() #fix the timeout problem
-        #    self.node.get_logger().info(f"Resetting RealSense device")
-        #    time.sleep(7)
-        
-        #self.devices = self.context.query_devices()
-
-        #if len(self.devices) == 0:
-        #    self.node.get_logger().error("No RealSense devices found after reset!")
-        #    raise RuntimeError("No RealSense devices found after reset!")
-
-
+        desired_found = False
+        for cam in self.devices:
+            self.node.get_logger().info(f"Found device : {cam.get_info(rs.camera_info.name)}, with serial nbr: {cam.get_info(rs.camera_info.serial_number)}")
+            if cam.get_info(rs.camera_info.serial_number) == self.serial_number:
+                desired_found = True
         self.bridge = CvBridge()
         self.config.enable_device(self.serial_number)
-        self.node.get_logger().info("enabled realsense d415 device")
+        if desired_found:
+            self.node.get_logger().info(f"Enabled Realsense Camera with serial : {self.serial_number}")
+        else:
+            self.node.get_logger().info(f"Could NOT enable Realsense Camera with serial : {self.serial_number}")
 
-
-    #     self.mode = "RGB"
-
-    # def set_mode(self, mode) :
-    #     if mode in ["RGB", "RGB-D"]:
-    #         self.mode = mode
-    #         self.node.get_logger().info(f"Camera mode set to {self.mode}")
-    #     else:
-    #         self.node.get_logger().warn("Invalid mode selected")        
 
     def get_depth_scale(self):
         depth_scale = self.profile.get_device().first_depth_sensor().get_depth_scale()
@@ -179,18 +154,10 @@ class RealSenseStereoCamera(StereoCameraInterface):
             return None
    
 
-    def publish_feeds(self, camera_id):#camera_id added just so it works with other cameras
-        # if camera_id == "/dev/realsense_aruco_0":
-        #     target_serial = "102122061110"  # Replace with your actual serial number
-        #     self.config.enable_device(target_serial)
-        #     self.node.get_logger().info(f"Detected RealSense D415 camera with serial number: {target_serial}")
+    def publish_feeds(self, camera_id):
 
-        # Check if any RealSense devices are connected
-
-        
         self.node.get_logger().info("STARTING TO PUBLISH RGB") #rgb-feed
     
-        #self.config.enable_stream(rs.stream.depth, self.x, self.y, rs.format.z16, self.fps)
         try:
             self.config.enable_stream(rs.stream.color, self.x, self.y, rs.format.bgr8, self.fps)
             self.profile = self.pipe.start(self.config)
@@ -208,7 +175,7 @@ class RealSenseStereoCamera(StereoCameraInterface):
             image_idx = 0
             try:
                 while True:
-                    self.node.get_logger().info("Capturing " + str(image_idx) + " | time: " + str(time.time()))
+                    #self.node.get_logger().info("Capturing " + str(image_idx) + " | time: " + str(time.time()))
                     frame = self.get_rgb()
 
                     if self.node.stopped:
