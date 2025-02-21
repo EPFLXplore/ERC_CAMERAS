@@ -150,5 +150,4 @@ class OakDStereoCamera(StereoCameraInterface):
 
             time.sleep(1 / self.fps)
 
-        self.node.get_logger().info("Stopping OAK-D feed.")
         self.device.close()

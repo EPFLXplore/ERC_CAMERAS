@@ -12,9 +12,8 @@ from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy, QoSDur
 
 
 class RealSenseStereoCamera(StereoCameraInterface):
+
     def __init__(self, node):
-        # the configuration of each camera will be implemented on the CS side
-        # need to hardcode now in the code the config
 
         self.node = node
 
@@ -30,38 +29,40 @@ class RealSenseStereoCamera(StereoCameraInterface):
         self.context = rs.context()
         self.devices = self.context.query_devices()
 
+        found_desired_cam = False
+        for dev in self.devices:
+            serial_test = dev.get_info(rs.camera_info.serial_number)
+            self.node.get_logger().info(f"Found device: {dev.get_info(rs.camera_info.name)}, serial = {serial_test}")
+            if serial_test == self.serial_number:
+                found_desired_cam = True
+                self.node.get_logger().info("Found desired realsense !")
+
+            #     if serial_test == "218622278049" or "D405" in dev.get_info(rs.camera_info.name): #HD D405
+            #         #self.node.get_logger().info("Starting Reset")
+            #         #try:
+            #             #self.node.get_logger().info("Resetting HD D405")
+            #             #dev.hardware_reset()
+            #             #time.sleep(5)
+            #         #except:
+            #             #self.node.get_logger().info("HD D405 Reset Failed !")
+            #         #time.sleep(5)
+            #         #self.node.get_logger().info("Reset for HD D405 Camera is done")
+            #         self.devices = self.context.query_devices()
+
+        
+        if found_desired_cam == False:
+            self.node.get_logger().error("Did not find desired camera !")
+            raise RuntimeError("Did not find desired camera !")
+
         
         if len(self.devices) == 0:
             self.node.get_logger().error("No RealSense devices found!")
             raise RuntimeError("No RealSense devices found!")
 
-        found = False
-        for dev in self.devices:
-            serial = dev.get_info(rs.camera_info.serial_number)
-            self.node.get_logger().info(f"Device serial: {serial}")
-            if serial == self.serial_number:
-                found = True
-                break
-        if not found:
-            self.node.get_logger().error(f"Device with serial {self.serial_number} not found!")
-            raise RuntimeError(f"Device with serial {self.serial_number} not found!")
-        
-
-        #for dev in self.devices:
-        #    dev.hardware_reset() #fix the timeout problem
-        #    self.node.get_logger().info(f"Resetting RealSense device")
-        #    time.sleep(7)
-        
-        #self.devices = self.context.query_devices()
-
-        #if len(self.devices) == 0:
-        #    self.node.get_logger().error("No RealSense devices found after reset!")
-        #    raise RuntimeError("No RealSense devices found after reset!")
-
 
         self.bridge = CvBridge()
         self.config.enable_device(self.serial_number)
-        self.node.get_logger().info("enabled realsense d415 device")
+        self.node.get_logger().info(f"Enabled Realsense with serial : {self.serial_number}")
 
 
     #     self.mode = "RGB"
@@ -71,7 +72,9 @@ class RealSenseStereoCamera(StereoCameraInterface):
     #         self.mode = mode
     #         self.node.get_logger().info(f"Camera mode set to {self.mode}")
     #     else:
-    #         self.node.get_logger().warn("Invalid mode selected")        
+    #         self.node.get_logger().warn("Invalid mode selected") 
+     
+
 
     def get_depth_scale(self):
         depth_scale = self.profile.get_device().first_depth_sensor().get_depth_scale()
@@ -185,22 +188,20 @@ class RealSenseStereoCamera(StereoCameraInterface):
         #     self.config.enable_device(target_serial)
         #     self.node.get_logger().info(f"Detected RealSense D415 camera with serial number: {target_serial}")
 
-        # Check if any RealSense devices are connected
-
         
-        self.node.get_logger().info("STARTING TO PUBLISH RGB") #rgb-feed
+        self.node.get_logger().info("STARTING TO PUBLISH RGB")
     
-        #self.config.enable_stream(rs.stream.depth, self.x, self.y, rs.format.z16, self.fps)
         try:
             self.config.enable_stream(rs.stream.color, self.x, self.y, rs.format.bgr8, self.fps)
             self.profile = self.pipe.start(self.config)
+            time.sleep(2)
             self.align = rs.align(rs.stream.color)
         except Exception as e:
             self.node.get_logger().error(f"Failed to start RealSense pipeline: {e}")
             return
 
      
-        for i in range(10):
+        while not self.node.stopped:
             frame = self.get_rgb()
             if frame is None:
                 self.node.get_logger().warn("Skipping frame initialization due to missing RGB frame")
@@ -212,64 +213,14 @@ class RealSenseStereoCamera(StereoCameraInterface):
                     frame = self.get_rgb()
 
                     if self.node.stopped:
-                        self.pipe.stop()
                         break    
                         
                     compressed_image = self.bridge.cv2_to_compressed_imgmsg(frame)
                     self.node.cam_pubs.publish(compressed_image)
                     image_idx += 1
             finally:
-                self.pipe.stop()
                 self.node.get_logger().info("Stopped RealSense pipeline")
-                #sleep(1/self.fps)  #realsense pipeline already takes care of fps
-
-
-
- 
-        # if self.mode == "RGB":
-
-        #     self.config.enable_stream(rs.stream.color, self.x, self.y, rs.format.bgr8, self.fps)
-
-        # elif self.mode == "RGB-D":
         
-        #     self.config.enable_stream(rs.stream.depth, self.x, self.y, rs.format.z16, self.fps)
-        #     self.config.enable_stream(rs.stream.color, self.x, self.y, rs.format.bgr8, self.fps)
-
-        # # Start streaming from file
-        # self.profile = self.pipe.start(self.config)
-        # self.node.get_logger().info(f"Camera pipeline started in {self.mode} mode")
-
-        # if self.mode == "RGB-D":
-        #     self.align = rs.align(rs.stream.color)
-
-
-        # for i in range(10):
-        #     frame = self.get_rgb() if self.mode == "RGB" else self.get_rgbd()[0]
-
-        # image_idx = 0
-        # while not self.node.stopped:
-        #     if self.mode == "RGB":
-        #         frame = self.get_rgb()
-        #         if frame is not None:
-        #             compressed_image = self.bridge.cv2_to_compressed_imgmsg(frame)
-        #             self.node.cam_pubs.publish(compressed_image)
-        #     elif self.mode == "RGB-D":
-        #         color_frame, depth_frame = self.get_rgbd()
-        #         if color_frame is not None:
-        #             compressed_image = self.bridge.cv2_to_compressed_imgmsg(color_frame)
-        #             self.node.cam_pubs.publish(compressed_image)
-
-        #             # Optionally publish depth data on a separate topic
-        #             depth_image = self.bridge.cv2_to_compressed_imgmsg(depth_frame)
-        #             self.node.depth_pubs.publish(depth_image)
-
-        #     #self.node.get_logger().info(f"Published frame {image_idx} in {self.mode} mode")
-        #     image_idx += 1
-
-        #     if self.node.stopped:
-        #         self.pipe.stop()  
-        #         break  
-    
-        
+        self.pipe.stop()        
 
             
