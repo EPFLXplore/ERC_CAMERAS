@@ -1,5 +1,6 @@
 #Author : Arno Laurie
-#Date : 09/12/2024
+#Last Updated : 09/12/2024
+#Status : working ?
 
 from ..interfaces.stereo_camera_interface import StereoCameraInterface
 import depthai as dai
@@ -112,10 +113,10 @@ class OakDStereoCamera(StereoCameraInterface):
     def publish_feeds(self, devrule=None):
         """Publish RGB and Depth feeds."""
         self.node.get_logger().info("Starting to publish RGB and Depth feeds from OAK-D camera.")
-        previous_time = 0
 
-        encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 10]  # Lower quality to save bandwidth
         image_idx = 0
+        previous_time = time.time()
+        encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 10]  # Lower quality to save bandwidth
         while not self.node.stopped:
 
             rgb_img = self.get_rgb()
@@ -137,6 +138,9 @@ class OakDStereoCamera(StereoCameraInterface):
                 compressed_msg.data = encoded_image.tobytes()  # Convert encoded image to bytes
                 self.node.cam_pubs.publish(compressed_msg)
 
+                # compressed_rgb = self.bridge.cv2_to_compressed_imgmsg(rgb_img, dst_format="jpeg")
+                # self.cam_pubs.publish(compressed_rgb)
+
             # Get Depth Frame
             #depth_img = self.get_depth()
             #if depth_img is not None:
@@ -151,10 +155,12 @@ class OakDStereoCamera(StereoCameraInterface):
             elapsed_time = max(current_time - previous_time, 1e-8)
 
             bw = Float32()
-            bw.data = float((len(compressed_msg.data) * 8) / (elapsed_time * 1_000_000))
-            previous_time = current_time
 
-            self.node.cam_bw.publish(bw)
+            #bw.data = float((len(compressed_rgb.data) * 8) / (elapsed_time * 1_000_000))
+
+            #self.cam_bw.publish(bw)
+
+            #self.node.get_logger().info(f"Captured Frame {image_idx} | Bandwidth: {bw.data:.2f} Mbps")
             image_idx += 1
             #time.sleep(1 / self.fps)
 
