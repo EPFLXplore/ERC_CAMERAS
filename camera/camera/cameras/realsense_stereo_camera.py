@@ -1,39 +1,36 @@
-
 import pyrealsense2 as rs
-#import pyrealsense2.pyrealsense2 as rs
 import numpy as np
 import cv2 as cv
-import yaml
-import time
 from ..interfaces.stereo_camera_interface import StereoCameraInterface
 from cv_bridge import CvBridge
-from time import sleep
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy, QoSDurabilityPolicy
+from custom_msg.srv import CameraParams
 
 
 class RealSenseStereoCamera(StereoCameraInterface):
     def __init__(self, node):
-        # the configuration of each camera will be implemented on the CS side
-        # need to hardcode now in the code the config
-
+        
         self.node = node
 
-        self.fps = 15
-        self.x = 1280
-        self.y = 720
+        self.declare_parameter("fps", 0)
+        self.declare_parameter("x", 0)
+        self.declare_parameter("y", 0)
+        self.declare_parameter("get_params", "")
 
-        self.serial_number = self.node.devrule  #we do a bit of cheating
+        self.fps = self.get_parameter("fps").get_parameter_value().value
+        self.x = self.get_parameter("x").get_parameter_value().value
+        self.y = self.get_parameter("y").get_parameter_value().value
+        self.topic_get_param = self.get_parameter("get_params").get_parameter_value().string_value
+
+        self.get_params_camera = self.node.create_service(CameraParams, self.topic_get_param, callback_group=self.node.callback_group)
+
+        self.serial_number = self.node.devrule  # we do a bit of cheating
 
         self.pipe = rs.pipeline()  # Create a RealSense pipeline object.
         self.config = rs.config()  # Disable the depth stream, keep only the RGB stream
 
         self.context = rs.context()
         self.devices = self.context.query_devices()
-
-        
-        # if len(self.devices) == 0:
-        #     self.node.get_logger().error("No RealSense devices found!")
-        #     raise RuntimeError("No RealSense devices found!")
 
         desired_found = False
         for cam in self.devices:
@@ -81,23 +78,23 @@ class RealSenseStereoCamera(StereoCameraInterface):
 
     # A method to get the depth data from the RealSense camera.
     def get_depth(self):
+
         frameset = (
             self.pipe.wait_for_frames()
-        )  # Wait for the next set of frames from the pipeline.
-        aligned_frame = self.align.process(frameset) # TODO added
+        ) 
+        aligned_frame = self.align.process(frameset)
         depth_frame = (
             aligned_frame.get_depth_frame()
         ) 
-        # depth_frame = (
-        #     frameset.get_depth_frame()
-        # )  # Get the depth frame from the frameset.
+        
         depth = np.asanyarray(
             depth_frame.get_data()
-        )  # Convert the depth frame to a NumPy array.
+        )
 
         return depth
     
-    def camera_params_callback(self, request, response):
+    def realsense_params(self, request, response):
+
         intrinsics = self.camera.get_intrinsics()
         depth_scale = self.camera.get_depth_scale()
         distortion_coefficients = self.camera.get_coeffs()
@@ -107,15 +104,7 @@ class RealSenseStereoCamera(StereoCameraInterface):
         response.cx = intrinsics["cx"]
         response.cy = intrinsics["cy"]
         response.distortion_coefficients = distortion_coefficients
-        self.get_logger().info(
-            f"Provided intrinsics: fx={response.fx}, fy={response.fy}, cx={response.cx}, cy={response.cy}"
-        )
-        self.get_logger().info(
-            f"Provided distortion coefficients: {response.distortion_coefficients}"
-        )
-        self.get_logger().info(
-            f"Provided depth scale: {response.depth_scale}"
-        )
+        
         return response
 
     # A method to get the color image from the RealSense camera.
@@ -133,16 +122,15 @@ class RealSenseStereoCamera(StereoCameraInterface):
         return color
 
     def get_rgbd(self):
+
         frameset = self.pipe.wait_for_frames()
         color_frame = np.asanyarray((frameset.get_color_frame().get_data()))
         depth_frame = np.asanyarray(frameset.get_depth_frame().get_data())
-        # depth_frame = self.get_depth()
+    
         return color_frame, depth_frame
     
     def get_rgb(self):
-        # frameset = self.pipe.wait_for_frames()
-        # color_frame = np.asanyarray((frameset.get_color_frame().get_data()))
-        # return color_frame   
+        
         try:
             frameset = self.pipe.wait_for_frames()
             color_frame = frameset.get_color_frame()

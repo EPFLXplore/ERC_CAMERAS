@@ -25,6 +25,7 @@ class CameraNode(Node):
         self.declare_parameter("topic_pub", self.default)
         self.declare_parameter("bw_pub", self.default)
         self.declare_parameter("devrule", self.default)
+        
         self.camera_type = self.get_parameter("camera_type").get_parameter_value().string_value
         self.service_topic = self.get_parameter("topic_service").get_parameter_value().string_value
         self.publisher_topic = self.get_parameter("topic_pub").get_parameter_value().string_value

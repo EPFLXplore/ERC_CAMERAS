@@ -16,10 +16,13 @@ from sensor_msgs.msg import CompressedImage
 
 class OakDStereoCamera(StereoCameraInterface):
     def __init__(self, node):
-        # raise NotImplementedError(f"__init__ not implemented for {self._name}")
+
         self.node = node
         self.bridge = CvBridge()
-        self.fps = 15
+
+        self.declare_parameter("fps", 0)
+
+        self.fps = self.get_parameter("fps").get_parameter_value().value
 
         self.pipeline = dai.Pipeline()
 

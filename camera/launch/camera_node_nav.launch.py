@@ -26,6 +26,8 @@ def generate_launch_description():
             {'topic_service': "/NAV/req_camera_nav_0"},
             {'topic_pub': "/NAV/feed_camera_nav_0"},
             {'bw_pub': "/NAV/bw_camera_nav_0"}, 
+            {'fps': 15},
+
             #the devrule is already in the dockerfile
         ],
     )
@@ -40,7 +42,8 @@ def generate_launch_description():
             {'topic_service': "/NAV/req_camera_nav_1"},
             {'topic_pub': "/NAV/feed_camera_nav_1"},
             {'bw_pub': "/NAV/bw_camera_nav_1"}, 
-            {'devrule': "102122061110"}
+            {'devrule': "102122061110"},
+            {'fps': 15},
         ],
     )
 
@@ -54,7 +57,8 @@ def generate_launch_description():
             {'topic_service': "/NAV/req_camera_nav_2"},
             {'topic_pub': "/NAV/feed_camera_nav_2"},
             {'bw_pub': "/NAV/bw_camera_nav_2"}, 
-            {'devrule': "135322062945"}
+            {'devrule': "135322062945"},
+            {'fps': 15},
         ],
     )
 
