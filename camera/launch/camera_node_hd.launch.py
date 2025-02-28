@@ -23,7 +23,9 @@ def generate_launch_description():
             {'topic_service': "/ROVER/req_camera_hd_0"},
             {'topic_pub': "/ROVER/feed_camera_hd_0"},
             {'bw_pub': "/ROVER/bw_camera_hd_0"}, 
-            {'devrule': "218622278049"}  # serial number written on the back of the camera
+            {'devrule': "218622278049"},  # serial number written on the back of the camera
+            {'info': "/ROVER/camera_info_"}, # we concatenate the devrule
+            {'depth_req': "/ROVER/depth_req_camera_hd_0"} # To activate the depth
         ],
     )
     return LaunchDescription(

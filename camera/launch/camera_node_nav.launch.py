@@ -40,7 +40,8 @@ def generate_launch_description():
             {'topic_service': "/NAV/req_camera_nav_1"},
             {'topic_pub': "/NAV/feed_camera_nav_1"},
             {'bw_pub': "/NAV/bw_camera_nav_1"}, 
-            {'devrule': "102122061110"}
+            {'devrule': "102122061110"},
+            {'info': "/NAV/camera_info_"} # we concatenate the devrule
         ],
     )
 
@@ -54,7 +55,8 @@ def generate_launch_description():
             {'topic_service': "/NAV/req_camera_nav_2"},
             {'topic_pub': "/NAV/feed_camera_nav_2"},
             {'bw_pub': "/NAV/bw_camera_nav_2"}, 
-            {'devrule': "135322062945"}
+            {'devrule': "135322062945"},
+            {'info': "/NAV/camera_info_"} # we concatenate the devrule
         ],
     )
 
@@ -62,6 +64,6 @@ def generate_launch_description():
         [
             nav_realsense_aruco_camera_left,
             nav_realsense_aruco_camera_right,
-            nav_front_camera,
+            #nav_front_camera,
         ]
     )
