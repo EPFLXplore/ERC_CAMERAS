@@ -1,15 +1,12 @@
-
 import pyrealsense2 as rs
-#import pyrealsense2.pyrealsense2 as rs
 import numpy as np
 import cv2 as cv
-import yaml
-import time
 from ..interfaces.stereo_camera_interface import StereoCameraInterface
 from cv_bridge import CvBridge
-from time import sleep
-from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy, QoSDurabilityPolicy
-from sensor_msgs.msg import CameraInfo
+from custom_msg.srv import CameraParams
+from custom_msg.msg import CompressedRGBD
+from std_msgs.msg import Int8
+from sensor_msgs.msg import Image
 
 class RealSenseStereoCamera(StereoCameraInterface):
     def __init__(self, node):
@@ -18,19 +15,33 @@ class RealSenseStereoCamera(StereoCameraInterface):
 
         self.node = node
 
+        # will be placed inside the launch file
         self.fps = 15
         self.x = 1280
         self.y = 720
 
-        self.serial_number = self.node.devrule  #we do a bit of cheating
+        self.serial_number = self.node.devrule 
+        self.node.declare_parameter("info", self.node.default)
+        self.info = self.node.get_parameter("info").get_parameter_value().string_value
+        self.node.declare_parameter("depth_req", self.node.default)
+        self.depth_request = self.node.get_parameter("depth_req").get_parameter_value().string_value
 
         self.pipe = rs.pipeline()  # Create a RealSense pipeline object.
         self.config = rs.config()  # Disable the depth stream, keep only the RGB stream
 
         self.context = rs.context()
         self.devices = self.context.query_devices()
-        self.camera_info_pub = self.node.create_publisher(CameraInfo, f"/NAV/camera_info_{self.serial_number}", 10)
         
+        # Service to retrieve the parameters of the camera
+        self.camera_info_service = self.node.create_service(CameraParams, self.info + self.serial_number, self.camera_params_callback)
+        
+        # Publisher for RGBD + service to activate the depth mode
+        self.color_depth_pub = self.node.create_publisher(CompressedRGBD, self.node.publisher_topic + "_plus_depth", 1)
+        self.depth_change = self.node.create_subscription(Int8, self.depth_request, self.depth_callback, 1)
+        self.depth_mode = 0
+        
+        ## -----------------------------------------------------
+        ## Check that the camera is found with the serial number
         if len(self.devices) == 0:
             self.node.get_logger().error("No RealSense devices found!")
             raise RuntimeError("No RealSense devices found!")
@@ -46,6 +57,11 @@ class RealSenseStereoCamera(StereoCameraInterface):
             self.node.get_logger().info(f"Enabled Realsense Camera with serial : {self.serial_number}")
         else:
             self.node.get_logger().info(f"Could NOT enable Realsense Camera with serial : {self.serial_number}")
+        ## -----------------------------------------------------------
+
+    # Depth mode: 0 => Off, 1 => On
+    def depth_callback(self, msg):
+        self.depth_mode = msg.data
 
 
     def get_depth_scale(self):
@@ -66,7 +82,7 @@ class RealSenseStereoCamera(StereoCameraInterface):
             "cy": intrinsics.ppy,
         }
         return intrinsics
-
+    
     # A method to get the distortion coefficients.
     def get_coeffs(self):
         intrinsics = (
@@ -78,40 +94,6 @@ class RealSenseStereoCamera(StereoCameraInterface):
         # Extract the distortion coefficients from the intrinsics object.
         return intrinsics.coeffs
 
-    def publish_camera_info(self):
-        # Fetch intrinsics from RealSense
-        intrinsics = self.get_intrinsics()
-        distortion = self.get_coeffs()
-
-        # Create CameraInfo message
-        camera_info_msg = CameraInfo()
-        camera_info_msg.header.stamp = self.node.get_clock().now().to_msg()
-        camera_info_msg.header.frame_id = f"realsense_{self.serial_number}_link"
-
-        # Ensure all values are explicitly floats
-        camera_info_msg.k = [
-            float(intrinsics["fx"]), 0.0, float(intrinsics["cx"]),
-            0.0, float(intrinsics["fy"]), float(intrinsics["cy"]),
-            0.0, 0.0, 1.0
-        ]
-
-        # Ensure distortion coefficients are properly formatted
-        camera_info_msg.d = [float(coeff) for coeff in distortion]
-
-        # Assign reasonable values for P (Projection Matrix)
-        camera_info_msg.p = [
-            float(intrinsics["fx"]), 0.0, float(intrinsics["cx"]), 0.0,
-            0.0, float(intrinsics["fy"]), float(intrinsics["cy"]), 0.0,
-            0.0, 0.0, 1.0, 0.0
-        ]
-
-        # Assign R (Rotation Matrix)
-        camera_info_msg.r = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
-
-        # Publish CameraInfo message
-        self.camera_info_pub.publish(camera_info_msg)
-        #self.node.get_logger().info(f"Published CameraInfo for {self.serial_number}")
-
 
     # A method to get the depth data from the RealSense camera.
     def get_depth(self):
@@ -122,9 +104,7 @@ class RealSenseStereoCamera(StereoCameraInterface):
         depth_frame = (
             aligned_frame.get_depth_frame()
         ) 
-        # depth_frame = (
-        #     frameset.get_depth_frame()
-        # )  # Get the depth frame from the frameset.
+        
         depth = np.asanyarray(
             depth_frame.get_data()
         )  # Convert the depth frame to a NumPy array.
@@ -132,24 +112,16 @@ class RealSenseStereoCamera(StereoCameraInterface):
         return depth
     
     def camera_params_callback(self, request, response):
-        intrinsics = self.camera.get_intrinsics()
-        depth_scale = self.camera.get_depth_scale()
-        distortion_coefficients = self.camera.get_coeffs()
+        intrinsics = self.get_intrinsics()
+        depth_scale = self.get_depth_scale()
+        distortion_coefficients = self.get_coeffs()
         response.depth_scale = depth_scale
-        response.fx = intrinsics["fx"]
-        response.fy = intrinsics["fy"]
-        response.cx = intrinsics["cx"]
-        response.cy = intrinsics["cy"]
+        response.fx = float(intrinsics["fx"])
+        response.fy = float(intrinsics["fy"])
+        response.cx = float(intrinsics["cx"])
+        response.cy = float(intrinsics["cy"])
         response.distortion_coefficients = distortion_coefficients
-        self.get_logger().info(
-            f"Provided intrinsics: fx={response.fx}, fy={response.fy}, cx={response.cx}, cy={response.cy}"
-        )
-        self.get_logger().info(
-            f"Provided distortion coefficients: {response.distortion_coefficients}"
-        )
-        self.get_logger().info(
-            f"Provided depth scale: {response.depth_scale}"
-        )
+       
         return response
 
     # A method to get the color image from the RealSense camera.
@@ -170,13 +142,9 @@ class RealSenseStereoCamera(StereoCameraInterface):
         frameset = self.pipe.wait_for_frames()
         color_frame = np.asanyarray((frameset.get_color_frame().get_data()))
         depth_frame = np.asanyarray(frameset.get_depth_frame().get_data())
-        # depth_frame = self.get_depth()
         return color_frame, depth_frame
     
-    def get_rgb(self):
-        # frameset = self.pipe.wait_for_frames()
-        # color_frame = np.asanyarray((frameset.get_color_frame().get_data()))
-        # return color_frame   
+    def get_rgb(self):   
         try:
             frameset = self.pipe.wait_for_frames()
             color_frame = frameset.get_color_frame()
@@ -191,88 +159,50 @@ class RealSenseStereoCamera(StereoCameraInterface):
 
     def publish_feeds(self, camera_id):
 
-        self.node.get_logger().info("STARTING TO PUBLISH RGB") #rgb-feed
+        self.node.get_logger().info("STARTING TO PUBLISH RGB")
     
         try:
             self.config.enable_stream(rs.stream.color, self.x, self.y, rs.format.bgr8, self.fps)
+            
+            if self.depth_mode == 1:
+                self.config.enable_stream(rs.stream.depth, self.x, self.y, rs.format.z16, self.fps)
+            
             self.profile = self.pipe.start(self.config)
             self.align = rs.align(rs.stream.color)
         except Exception as e:
             self.node.get_logger().error(f"Failed to start RealSense pipeline: {e}")
             return
 
-     
-        for i in range(10):
-            frame = self.get_rgb()
-            if frame is None:
-                self.node.get_logger().warn("Skipping frame initialization due to missing RGB frame")
         
-            image_idx = 0
-            try:
-                while True:
-                    #self.node.get_logger().info("Capturing " + str(image_idx) + " | time: " + str(time.time()))
-                    frame = self.get_rgb()
+        while True:
+            if self.depth_mode == 0:
+                frame = self.get_rgb()
+                compressed_image = self.bridge.cv2_to_compressed_imgmsg(frame)
+                self.node.cam_pubs.publish(compressed_image)
+            else:
+                frame_color, frame_depth = self.get_rgbd()
+                compressed_image = self.bridge.cv2_to_compressed_imgmsg(frame_color)
+                self.node.cam_pubs.publish(compressed_image)
+                
+                msg = Image()
+                msg.header.stamp = self.node.get_clock().now().to_msg()
+                msg.header.frame_id = "camera_hd_0_depth_frame"
+                msg.height = frame_depth.shape[0]
+                msg.width = frame_depth.shape[1]
+                msg.encoding = "mono16"  # Encoding for uint16 depth images
+                msg.is_bigendian = False
+                msg.step = msg.width * 2  # 2 bytes per pixel
+                msg.data = frame_depth.tobytes()
+                
+                # Not really optimized because we send on 2 topics, one only RGB and the other one
+                # RGBD. But because we have not experienced issues, we keep with this architecture
+                self.node.get_logger().info("depthhhh")
+                full_msg = CompressedRGBD()
+                full_msg.color = compressed_image
+                full_msg.depth = msg
+                self.color_depth_pub.publish(full_msg)
 
-                    if self.node.stopped:
-                        self.pipe.stop()
-                        break    
-                        
-                    compressed_image = self.bridge.cv2_to_compressed_imgmsg(frame)
-                    self.node.cam_pubs.publish(compressed_image)
-                    image_idx += 1
-                    self.publish_camera_info()
-            finally:
+            if self.node.stopped:
                 self.pipe.stop()
-                self.node.get_logger().info("Stopped RealSense pipeline")
-                #sleep(1/self.fps)  #realsense pipeline already takes care of fps
-
-
-
- 
-        # if self.mode == "RGB":
-
-        #     self.config.enable_stream(rs.stream.color, self.x, self.y, rs.format.bgr8, self.fps)
-
-        # elif self.mode == "RGB-D":
-        
-        #     self.config.enable_stream(rs.stream.depth, self.x, self.y, rs.format.z16, self.fps)
-        #     self.config.enable_stream(rs.stream.color, self.x, self.y, rs.format.bgr8, self.fps)
-
-        # # Start streaming from file
-        # self.profile = self.pipe.start(self.config)
-        # self.node.get_logger().info(f"Camera pipeline started in {self.mode} mode")
-
-        # if self.mode == "RGB-D":
-        #     self.align = rs.align(rs.stream.color)
-
-
-        # for i in range(10):
-        #     frame = self.get_rgb() if self.mode == "RGB" else self.get_rgbd()[0]
-
-        # image_idx = 0
-        # while not self.node.stopped:
-        #     if self.mode == "RGB":
-        #         frame = self.get_rgb()
-        #         if frame is not None:
-        #             compressed_image = self.bridge.cv2_to_compressed_imgmsg(frame)
-        #             self.node.cam_pubs.publish(compressed_image)
-        #     elif self.mode == "RGB-D":
-        #         color_frame, depth_frame = self.get_rgbd()
-        #         if color_frame is not None:
-        #             compressed_image = self.bridge.cv2_to_compressed_imgmsg(color_frame)
-        #             self.node.cam_pubs.publish(compressed_image)
-
-        #             # Optionally publish depth data on a separate topic
-        #             depth_image = self.bridge.cv2_to_compressed_imgmsg(depth_frame)
-        #             self.node.depth_pubs.publish(depth_image)
-
-        #     #self.node.get_logger().info(f"Published frame {image_idx} in {self.mode} mode")
-        #     image_idx += 1
-
-        #     if self.node.stopped:
-        #         self.pipe.stop()  
-        #         break  
-    
-        
-
+                break
             
