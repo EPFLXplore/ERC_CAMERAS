@@ -197,7 +197,6 @@ class RealSenseStereoCamera(StereoCameraInterface):
                 
                 # Not really optimized because we send on 2 topics, one only RGB and the other one
                 # RGBD. But because we have not experienced issues, we keep with this architecture
-                self.node.get_logger().info("depthhhh")
                 full_msg = CompressedRGBD()
                 full_msg.color = compressed_image
                 full_msg.depth = msg
