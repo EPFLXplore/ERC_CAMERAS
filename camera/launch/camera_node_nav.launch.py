@@ -41,7 +41,9 @@ def generate_launch_description():
             {'topic_pub': "/NAV/feed_camera_nav_1"},
             {'bw_pub': "/NAV/bw_camera_nav_1"}, 
             {'devrule': "102122061110"},
-            {'info': "/NAV/camera_info_"} # we concatenate the devrule
+            {'info': "/NAV/camera_info_"}, # we concatenate the devrule
+            {'depth_req': "/NAV/depth_req_camera_nav_1"} # To activate the depth
+
         ],
     )
 
@@ -56,7 +58,8 @@ def generate_launch_description():
             {'topic_pub': "/NAV/feed_camera_nav_2"},
             {'bw_pub': "/NAV/bw_camera_nav_2"}, 
             {'devrule': "135322062945"},
-            {'info': "/NAV/camera_info_"} # we concatenate the devrule
+            {'info': "/NAV/camera_info_"}, # we concatenate the devrule
+            {'depth_req': "/NAV/depth_req_camera_nav_2"}
         ],
     )
 

@@ -34,6 +34,8 @@ class RealSenseStereoCamera(StereoCameraInterface):
 
         # Service to retrieve the parameters of the camera
         self.camera_info_service = self.node.create_service(CameraParams, self.info + self.serial_number, self.camera_params_callback)
+        self.node.get_logger().info(f"Started CameraParams service at: {self.info + self.serial_number}")
+
         
         # Publisher for RGBD + service to activate the depth mode
         self.color_depth_pub = self.node.create_publisher(CompressedRGBD, self.node.publisher_topic + "_plus_depth", 1)
