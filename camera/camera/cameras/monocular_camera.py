@@ -16,7 +16,6 @@ class MonocularCamera(MonocularCameraInterface):
 
     def publish_feeds(self, camera_id):
         camera = cv2.VideoCapture(camera_id, cv2.CAP_V4L)
-        #camera = cv2.VideoCapture(4, cv2.CAP_V4L)
         camera.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter.fourcc('M','J','P','G'))
         camera.set(cv2.CAP_PROP_FPS, 15)
 
@@ -27,7 +26,7 @@ class MonocularCamera(MonocularCameraInterface):
             image_idx = 0
             previous_time = 0
             while True:
-                self.node.get_logger().info("Capturing " + str(image_idx) + " | time: " + str(time.time()))
+                #self.node.get_logger().info("Capturing " + str(image_idx) + " | time: " + str(time.time()))
                 ret, frame = camera.read()
                 if (not ret) or self.node.stopped:
                     break
@@ -50,7 +49,6 @@ class MonocularCamera(MonocularCameraInterface):
                 break
 
             camera = cv2.VideoCapture(camera_id, cv2.CAP_V4L)
-            #camera = cv2.VideoCapture(4, cv2.CAP_V4L) 
             camera.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter.fourcc('M','J','P','G'))
             camera.set(cv2.CAP_PROP_FPS, 15)
             sleep(1)

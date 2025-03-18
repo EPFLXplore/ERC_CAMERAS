@@ -75,6 +75,6 @@ def generate_launch_description():
             camera_cs_0,
             camera_cs_1,
             camera_cs_2,
-            nav_front_camera
+            #nav_front_camera
         ]
     )
