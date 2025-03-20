@@ -17,10 +17,10 @@ class RealSenseStereoCamera(StereoCameraInterface):
 
         # will be placed inside the launch file
         self.fps = 30
-        # self.x = 1280
-        # self.y = 720
-        self.x = 640
-        self.y = 480
+        self.x = 1280
+        self.y = 720
+        # self.x = 640
+        # self.y = 480
 
         self.serial_number = self.node.devrule 
         self.node.declare_parameter("info", self.node.default)
@@ -172,12 +172,15 @@ class RealSenseStereoCamera(StereoCameraInterface):
             if self.depth_mode == 1:
                 self.config.enable_stream(rs.stream.depth, self.x, self.y, rs.format.z16, self.fps)
             
-            self.profile = self.pipe.start(self.config)
-            self.align = rs.align(rs.stream.color)
+            self.profile = self.pipe.start(self.config)        
+            self.align = rs.align(rs.stream.depth)  # Align depth data if needed
+
         except Exception as e:
             self.node.get_logger().error(f"Failed to start RealSense pipeline: {e}")
             return
 
+        for i in range(10):
+            frame = self.get_rgb()
         
         while True:
             if self.depth_mode == 0:
@@ -209,4 +212,4 @@ class RealSenseStereoCamera(StereoCameraInterface):
             if self.node.stopped:
                 self.pipe.stop()
                 break
-            
+                
