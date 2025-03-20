@@ -5,7 +5,7 @@ from ..interfaces.stereo_camera_interface import StereoCameraInterface
 from cv_bridge import CvBridge
 from custom_msg.srv import CameraParams
 from custom_msg.msg import CompressedRGBD
-from std_msgs.msg import Int8
+from std_srvs.srv import SetBool
 from sensor_msgs.msg import Image
 
 class RealSenseStereoCamera(StereoCameraInterface):
@@ -41,7 +41,7 @@ class RealSenseStereoCamera(StereoCameraInterface):
         
         # Publisher for RGBD + service to activate the depth mode
         self.color_depth_pub = self.node.create_publisher(CompressedRGBD, self.node.publisher_topic + "_plus_depth", 1)
-        self.depth_change = self.node.create_subscription(Int8, self.depth_request, self.depth_callback, 1)
+        self.depth_change = self.node.create_service(SetBool, self.depth_request, self.depth_callback)
         self.depth_mode = 0
         
         ## -----------------------------------------------------
@@ -65,8 +65,10 @@ class RealSenseStereoCamera(StereoCameraInterface):
         ## -----------------------------------------------------------
 
     # Depth mode: 0 => Off, 1 => On
-    def depth_callback(self, msg):
-        self.depth_mode = msg.data
+    def depth_callback(self, request, response):
+        self.depth_mode = request.data
+        response.success = True
+        return response
 
 
     def get_depth_scale(self):
