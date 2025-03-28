@@ -6,6 +6,7 @@ from cv_bridge import CvBridge
 from custom_msg.srv import CameraParams
 from custom_msg.msg import CompressedRGBD
 from std_msgs.msg import Int8
+from std_srvs.srv import SetBool
 from sensor_msgs.msg import Image
 
 class RealSenseStereoCamera(StereoCameraInterface):
@@ -33,16 +34,14 @@ class RealSenseStereoCamera(StereoCameraInterface):
 
         self.context = rs.context()
         self.devices = self.context.query_devices()
-
-        # Service to retrieve the parameters of the camera
-        self.camera_info_service = self.node.create_service(CameraParams, self.info + self.serial_number, self.camera_params_callback)
-        self.node.get_logger().info(f"Started CameraParams service at: {self.info + self.serial_number}")
-
         
         # Publisher for RGBD + service to activate the depth mode
         self.color_depth_pub = self.node.create_publisher(CompressedRGBD, self.node.publisher_topic + "_plus_depth", 1)
         self.depth_change = self.node.create_subscription(Int8, self.depth_request, self.depth_callback, 1)
         self.depth_mode = 0
+        
+        # Service to retrieve the parameters of the camera
+        self.camera_info_service = self.node.create_service(CameraParams, self.info + self.serial_number, self.camera_params_callback)
         
         ## -----------------------------------------------------
         ## Check that the camera is found with the serial number
@@ -63,6 +62,8 @@ class RealSenseStereoCamera(StereoCameraInterface):
         else:
             self.node.get_logger().info(f"Could NOT enable Realsense Camera with serial : {self.serial_number}")
         ## -----------------------------------------------------------
+
+        self.node.get_logger().info(f"Started CameraParams service at: {self.info + self.serial_number}")
 
     # Depth mode: 0 => Off, 1 => On
     def depth_callback(self, msg):
@@ -172,7 +173,13 @@ class RealSenseStereoCamera(StereoCameraInterface):
             if self.depth_mode == 1:
                 self.config.enable_stream(rs.stream.depth, self.x, self.y, rs.format.z16, self.fps)
             
+            
             self.profile = self.pipe.start(self.config)        
+            
+            sensor = self.pipe.get_active_profile().get_device().query_sensors()[0]
+
+            # Set the exposure anytime during the operation
+            sensor.set_option(rs.option.exposure, 10000)
             self.align = rs.align(rs.stream.depth)  # Align depth data if needed
 
         except Exception as e:

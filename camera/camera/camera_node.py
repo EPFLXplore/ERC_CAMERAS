@@ -47,7 +47,7 @@ class CameraNode(Node):
         self.stopped = True
 
         # Service to activate the camera. For now we hardcode the parameters so we use just a SetBool
-        self.service_activation = self.create_service(SetBool, self.service_topic, self.start_cameras_callback)
+        self.service_activation = self.create_service(SetBool, self.service_topic, self.start_cameras_callback, callback_group=self.callback_group)
 
 
         self.thread = threading.Thread(target=self.camera.publish_feeds, args=(self.devrule,))
