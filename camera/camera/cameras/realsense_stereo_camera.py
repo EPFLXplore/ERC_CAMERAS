@@ -19,10 +19,10 @@ class RealSenseStereoCamera(StereoCameraInterface):
 
         # will be placed inside the launch file
         self.fps = 30
-        self.x = 1280
-        self.y = 720
-        # self.x = 640
-        # self.y = 480
+        # self.x = 1280
+        # self.y = 720
+        self.x = 640
+        self.y = 480
 
         self.serial_number = self.node.devrule 
         self.node.declare_parameter("info", self.node.default)
@@ -147,10 +147,19 @@ class RealSenseStereoCamera(StereoCameraInterface):
 
         return color
 
-    def get_rgbd(self):
+    def get_rgbd(self, spatial, temporal, hole_filling):
         frameset = self.pipe.wait_for_frames()
         color_frame = np.asanyarray((frameset.get_color_frame().get_data()))
-        depth_frame = np.asanyarray(frameset.get_depth_frame().get_data())
+        #depth_frame = np.asanyarray(frameset.get_depth_frame().get_data())
+        depth_frame = frameset.get_depth_frame()
+        
+        # Apply filters in this order
+        filtered = spatial.process(depth_frame)
+        filtered = temporal.process(filtered)
+        filtered = hole_filling.process(filtered)
+        
+        depth_frame = np.asanyarray(filtered.get_data())
+        
         return color_frame, depth_frame
     
     def get_rgb(self):   
@@ -184,6 +193,18 @@ class RealSenseStereoCamera(StereoCameraInterface):
             # Set the exposure anytime during the operation
             # For the image to be darker
             sensor.set_option(rs.option.exposure, 10000)
+            
+            spatial = rs.spatial_filter()
+            temporal = rs.temporal_filter()
+            hole_filling = rs.hole_filling_filter()
+
+            # spatial.set_option(rs.option.filter_magnitude, 2)
+            # spatial.set_option(rs.option.filter_smooth_alpha, 0.5)
+            # spatial.set_option(rs.option.filter_smooth_delta, 20)
+
+            # temporal.set_option(rs.option.filter_smooth_alpha, 0.4)
+            # temporal.set_option(rs.option.filter_smooth_delta, 20)
+            
             self.align = rs.align(rs.stream.depth)  # Align depth data if needed
 
         except Exception as e:
@@ -199,7 +220,8 @@ class RealSenseStereoCamera(StereoCameraInterface):
                 compressed_image = self.bridge.cv2_to_compressed_imgmsg(frame)
                 self.node.cam_pubs.publish(compressed_image)
             else:
-                frame_color, frame_depth = self.get_rgbd()
+                frame_color, frame_depth = self.get_rgbd(spatial, temporal, hole_filling)
+                
                 compressed_image = self.bridge.cv2_to_compressed_imgmsg(frame_color)
                 self.node.cam_pubs.publish(compressed_image)
                 
