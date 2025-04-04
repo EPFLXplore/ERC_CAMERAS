@@ -150,7 +150,6 @@ class RealSenseStereoCamera(StereoCameraInterface):
     def get_rgbd(self, spatial, temporal, hole_filling):
         frameset = self.pipe.wait_for_frames()
         color_frame = np.asanyarray((frameset.get_color_frame().get_data()))
-        #depth_frame = np.asanyarray(frameset.get_depth_frame().get_data())
         depth_frame = frameset.get_depth_frame()
         
         # Apply filters in this order
