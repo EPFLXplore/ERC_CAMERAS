@@ -41,9 +41,6 @@ class RealSenseStereoCamera(StereoCameraInterface):
         self.depth_change = self.node.create_service(SetBool, self.depth_request, self.depth_callback)
         self.depth_mode = 0
         
-        # Service to retrieve the parameters of the camera
-        self.camera_info_service = self.node.create_service(CameraParams, self.info + self.serial_number, self.camera_params_callback)
-        
         ## -----------------------------------------------------
         ## Check that the camera is found with the serial number
         if len(self.devices) == 0:
@@ -205,12 +202,15 @@ class RealSenseStereoCamera(StereoCameraInterface):
             # temporal.set_option(rs.option.filter_smooth_delta, 20)
             
             self.align = rs.align(rs.stream.depth)  # Align depth data if needed
+            
+            # Service to retrieve the parameters of the camera
+            self.camera_info_service = self.node.create_service(CameraParams, self.info + self.serial_number, self.camera_params_callback)
 
         except Exception as e:
             self.node.get_logger().error(f"Failed to start RealSense pipeline: {e}")
             return
 
-        for i in range(10):
+        for i in range(50):
             frame = self.get_rgb()
         
         while True:
