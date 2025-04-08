@@ -3,10 +3,11 @@ from rclpy.node import Node
 from std_srvs.srv import SetBool
 from .camera_factory import CameraFactory
 from sensor_msgs.msg import CompressedImage
-import cv2, threading
+import threading
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy, QoSDurabilityPolicy
 from std_msgs.msg import Float32
+import time
 
 class CameraNode(Node):
     """
@@ -31,6 +32,7 @@ class CameraNode(Node):
         self.publisher_topic_bw = self.get_parameter("bw_pub").get_parameter_value().string_value
         self.devrule = self.get_parameter("devrule").get_parameter_value().string_value
 
+        # To be used for any camera
         qos_profile = QoSProfile(
             reliability=QoSReliabilityPolicy.BEST_EFFORT, # BEST_EFFORT: message will attempt to send message but if it fails it will not try again
             durability=QoSDurabilityPolicy.VOLATILE, # VOLATILE: if no subscribers are listening, the message sent is not saved
@@ -61,10 +63,8 @@ class CameraNode(Node):
             # Only start the thread if it's not already running
             if not hasattr(self, 'thread') or not self.thread.is_alive():
                 if self.camera_type == "oakd_stereo": 
-                    self.get_logger().info("inside oakd_stereo")
                     self.thread = threading.Thread(target=self.camera.publish_feeds)
                 elif self.camera_type == "realsense_stereo":
-                    self.get_logger().info("inside realsense_stereo")
                     self.thread = threading.Thread(target=self.camera.publish_feeds, args=(self.devrule,))
                 else:
                     self.thread = threading.Thread(target=self.camera.publish_feeds, args=(self.devrule,))
@@ -88,6 +88,13 @@ class CameraNode(Node):
                 response.message = "No camera thread to stop"
 
         return response
+
+    def calculate_bandwidth(self, current_time, previous_time, compressed_image):
+        elapsed_time = current_time - previous_time
+        bw = Float32()
+        bw.data = float((len(compressed_image.data) * 8) / (elapsed_time * 1_000_000))  # Bandwidth in Mbps
+        
+        return bw
 
 def main(args=None):
     

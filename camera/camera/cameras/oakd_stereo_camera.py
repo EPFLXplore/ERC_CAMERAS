@@ -1,20 +1,12 @@
-#Author : Arno Laurie
-#Last Updated : 09/12/2024
-#Status : working ?
-
-from ..interfaces.stereo_camera_interface import StereoCameraInterface
 import depthai as dai
 import cv2
 import time
-import rclpy
 from cv_bridge import CvBridge
-from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy, QoSDurabilityPolicy
-import sys
 from std_msgs.msg import Float32
 from sensor_msgs.msg import CompressedImage
 
 
-class OakDStereoCamera(StereoCameraInterface):
+class OakDStereoCamera():
     def __init__(self, node):
         # raise NotImplementedError(f"__init__ not implemented for {self._name}")
         self.node = node
@@ -112,10 +104,8 @@ class OakDStereoCamera(StereoCameraInterface):
     
     def publish_feeds(self, devrule=None):
         """Publish RGB and Depth feeds."""
-        self.node.get_logger().info("Starting to publish RGB and Depth feeds from OAK-D camera.")
 
-        image_idx = 0
-        previous_time = time.time()
+        previous_time = 0
         encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 10]  # Lower quality to save bandwidth
         while not self.node.stopped:
 
@@ -128,40 +118,24 @@ class OakDStereoCamera(StereoCameraInterface):
                     self.node.get_logger().warn("Failed to compress RGB frame.")
                     continue
 
-                #if image_idx % 3 == 0:
-
-                #encoded_image = cv2.resize(encoded_image, (480, 360))
-
                 # Convert encoded bytes to ROS-compressed message
                 compressed_msg = CompressedImage()
                 compressed_msg.format = "jpeg"
                 compressed_msg.data = encoded_image.tobytes()  # Convert encoded image to bytes
                 self.node.cam_pubs.publish(compressed_msg)
 
-                # compressed_rgb = self.bridge.cv2_to_compressed_imgmsg(rgb_img, dst_format="jpeg")
-                # self.cam_pubs.publish(compressed_rgb)
+                # Get Depth Frame
+                #depth_img = self.get_depth()
+                #if depth_img is not None:
+                    # Normalize depth image for visualization
+                    #depth_img_normalized = cv2.normalize(depth_img, None, 0, 255, cv2.NORM_MINMAX)
+                    #depth_img_colored = cv2.applyColorMap(depth_img_normalized.astype('uint8'), cv2.COLORMAP_JET)
+                    #compressed_depth = self.bridge.cv2_to_compressed_imgmsg(depth_img_colored, dst_format="jpeg")
+                    #self.depth_pubs.publish(compressed_depth)
 
-            # Get Depth Frame
-            #depth_img = self.get_depth()
-            #if depth_img is not None:
-                # Normalize depth image for visualization
-                #depth_img_normalized = cv2.normalize(depth_img, None, 0, 255, cv2.NORM_MINMAX)
-                #depth_img_colored = cv2.applyColorMap(depth_img_normalized.astype('uint8'), cv2.COLORMAP_JET)
-                #compressed_depth = self.bridge.cv2_to_compressed_imgmsg(depth_img_colored, dst_format="jpeg")
-                #self.depth_pubs.publish(compressed_depth)
-
-            # Bandwidth Calculation
-            current_time = time.time()
-            elapsed_time = max(current_time - previous_time, 1e-8)
-
-            bw = Float32()
-
-            #bw.data = float((len(compressed_rgb.data) * 8) / (elapsed_time * 1_000_000))
-
-            #self.cam_bw.publish(bw)
-
-            #self.node.get_logger().info(f"Captured Frame {image_idx} | Bandwidth: {bw.data:.2f} Mbps")
-            image_idx += 1
-            #time.sleep(1 / self.fps)
+                current_time = time.time()
+                bw = self.node.calculate_bandwidth(current_time, previous_time, compressed_msg)
+                previous_time = current_time 
+                self.node.cam_bw.publish(bw)
 
         self.device.close()
