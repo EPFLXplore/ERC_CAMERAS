@@ -178,9 +178,11 @@ class RealSenseStereoCamera(StereoCameraInterface):
         try:
             self.config.enable_stream(rs.stream.color, self.x, self.y, rs.format.bgr8, self.fps)
             
-            if self.depth_mode == 1:
+            if self.depth_mode == True or self.depth_mode == 1:
                 self.config.enable_stream(rs.stream.depth, self.x, self.y, rs.format.z16, self.fps)
-            
+                spatial = rs.spatial_filter()
+                temporal = rs.temporal_filter()
+                hole_filling = rs.hole_filling_filter()
             
             self.profile = self.pipe.start(self.config)        
             
@@ -188,11 +190,7 @@ class RealSenseStereoCamera(StereoCameraInterface):
 
             # Set the exposure anytime during the operation
             # For the image to be darker
-            sensor.set_option(rs.option.exposure, 10000)
-            
-            spatial = rs.spatial_filter()
-            temporal = rs.temporal_filter()
-            hole_filling = rs.hole_filling_filter()
+            sensor.set_option(rs.option.exposure, 5000)
 
             # spatial.set_option(rs.option.filter_magnitude, 2)
             # spatial.set_option(rs.option.filter_smooth_alpha, 0.5)
@@ -214,7 +212,7 @@ class RealSenseStereoCamera(StereoCameraInterface):
             frame = self.get_rgb()
         
         while True:
-            if self.depth_mode == 0:
+            if self.depth_mode == False or self.depth_mode == 0:
                 frame = self.get_rgb()
                 compressed_image = self.bridge.cv2_to_compressed_imgmsg(frame)
                 self.node.cam_pubs.publish(compressed_image)
