@@ -23,7 +23,8 @@ def generate_launch_description():
             {'topic_service': "/ROVER/req_camera_cs_0"},
             {'topic_pub': "/ROVER/feed_camera_cs_0"},
             {'bw_pub': "/ROVER/bw_camera_cs_0"}, 
-            {'devrule': "/dev/video0"}
+            {'devrule': "/dev/video0"},
+            {'state': "/ROVER/state_camera_cs_0"}
         ],
     )
     
@@ -36,8 +37,9 @@ def generate_launch_description():
             {'camera_type': "monocular"},
             {'topic_service': "/ROVER/req_camera_cs_1"},
             {'topic_pub': "/ROVER/feed_camera_cs_1"},
-            {'bw_pub': "/ROVER/bw_camera_cs_1"}, ### 
-            {'devrule': "/dev/video2"}
+            {'bw_pub': "/ROVER/bw_camera_cs_1"},
+            {'devrule': "/dev/video2"},
+            {'state': "/ROVER/state_camera_cs_1"}
         ],
     )
 
@@ -51,7 +53,8 @@ def generate_launch_description():
             {'topic_service': "/ROVER/req_camera_cs_2"},
             {'topic_pub': "/ROVER/feed_camera_cs_2"}, 
             {'bw_pub': "/ROVER/bw_camera_cs_2"},
-            {'devrule': "/dev/video4"}
+            {'devrule': "/dev/video4"},
+            {'state': "/ROVER/state_camera_cs_2"}
         ],
     )
 
@@ -75,6 +78,5 @@ def generate_launch_description():
             camera_cs_0,
             camera_cs_1,
             camera_cs_2,
-            #nav_front_camera
         ]
     )
