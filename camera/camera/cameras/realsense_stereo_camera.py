@@ -183,7 +183,7 @@ class RealSenseStereoCamera():
 
             # Set the exposure anytime during the operation
             # For the image to be darker
-            sensor.set_option(rs.option.exposure, 5000)
+            sensor.set_option(rs.option.exposure, 8000)
 
             # spatial.set_option(rs.option.filter_magnitude, 2)
             # spatial.set_option(rs.option.filter_smooth_alpha, 0.5)
