@@ -26,13 +26,6 @@ setup(
     entry_points={
         "console_scripts": [
             "camera = camera.camera_node:main",
-            "factory = camera.camera_factory:main",
-            "depth = camera.depth_publisher:main",
-            "bare_camera = camera.bare_camera_node:main",
-            "marg_top_left = camera.nav_marg_cam:main",
-            "image_subscriber = camera.image_subscriber:main"
-            
-
         ],
     },
 )

@@ -1,10 +1,4 @@
-from .cameras.mock_monocular_camera import MockMonocularCamera
-from .cameras.mock_stereo_camera import MockStereoCamera
 from .cameras.monocular_camera import MonocularCamera
-import yaml
-import rclpy
-from rclpy.node import Node
-from std_msgs.msg import String
 
 class CameraFactory():
             
@@ -27,9 +21,5 @@ class CameraFactory():
                 raise
         elif node.camera_type == "monocular":
             return MonocularCamera(node)
-        elif node.camera_type == "mock_stereo":
-            return MockStereoCamera(node)
-        elif node.camera_type == "mock_monocular":
-            return MockMonocularCamera(node)
         else:
             raise ValueError(f"Unknown camera type: {node.camera_type}")

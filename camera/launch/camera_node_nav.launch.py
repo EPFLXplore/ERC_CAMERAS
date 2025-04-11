@@ -25,7 +25,8 @@ def generate_launch_description():
             {'camera_type': "oakd_stereo"},
             {'topic_service': "/NAV/req_camera_nav_0"},
             {'topic_pub': "/NAV/feed_camera_nav_0"},
-            {'bw_pub': "/NAV/bw_camera_nav_0"}, 
+            {'bw_pub': "/NAV/bw_camera_nav_0"},
+            {'state': "/NAV/state_camera_nav_0"}
             #the devrule is already in the dockerfile
         ],
     )
