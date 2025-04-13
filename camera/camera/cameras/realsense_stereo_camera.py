@@ -13,9 +13,9 @@ class RealSenseStereoCamera():
 
         self.node = node
 
-        self.fps = 30
-        self.x = 640
-        self.y = 480
+        self.fps = 15
+        self.x = 1280
+        self.y = 720
 
         self.serial_number = self.node.devrule 
         self.node.declare_parameter("info", self.node.default)
