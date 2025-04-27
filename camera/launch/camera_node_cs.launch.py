@@ -24,7 +24,10 @@ def generate_launch_description():
             {'topic_pub': "/ROVER/feed_camera_cs_0"},
             {'bw_pub': "/ROVER/bw_camera_cs_0"}, 
             {'devrule': "/dev/video0"},
-            {'state': "/ROVER/state_camera_cs_0"}
+            {'state': "/ROVER/state_camera_cs_0"},
+            {'fps': 15},
+            {'x': 640},
+            {'y': 480}
         ],
     )
     
@@ -39,7 +42,10 @@ def generate_launch_description():
             {'topic_pub': "/ROVER/feed_camera_cs_1"},
             {'bw_pub': "/ROVER/bw_camera_cs_1"},
             {'devrule': "/dev/video2"},
-            {'state': "/ROVER/state_camera_cs_1"}
+            {'state': "/ROVER/state_camera_cs_1"},
+            {'fps': 15},
+            {'x': 640},
+            {'y': 480}
         ],
     )
 
@@ -54,21 +60,10 @@ def generate_launch_description():
             {'topic_pub': "/ROVER/feed_camera_cs_2"}, 
             {'bw_pub': "/ROVER/bw_camera_cs_2"},
             {'devrule': "/dev/video4"},
-            {'state': "/ROVER/state_camera_cs_2"}
-        ],
-    )
-
-    nav_front_camera = Node(
-        package='camera',
-        executable='camera',
-        name='camera_nav_front',
-        namespace='/NAV',
-        parameters=[
-            {'camera_type': "oakd_stereo"},
-            {'topic_service': "/NAV/req_camera_nav_0"},
-            {'topic_pub': "/NAV/feed_camera_nav_0"},
-            {'bw_pub': "/NAV/bw_camera_nav_0"}, 
-            #the devrule is already in the dockerfile
+            {'state': "/ROVER/state_camera_cs_2"},
+            {'fps': 15},
+            {'x': 640},
+            {'y': 480}
         ],
     )
 

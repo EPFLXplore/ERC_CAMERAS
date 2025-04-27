@@ -1,8 +1,6 @@
 import cv2
-from time import sleep
 import time
 from cv_bridge import CvBridge
-from std_msgs.msg import Float32
 
 class MonocularCamera():
     def __init__(self, node):
@@ -13,7 +11,7 @@ class MonocularCamera():
     def publish_feeds(self, camera_id):
         camera = cv2.VideoCapture(camera_id, cv2.CAP_V4L)
         camera.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter.fourcc('M','J','P','G'))
-        camera.set(cv2.CAP_PROP_FPS, 15)
+        camera.set(cv2.CAP_PROP_FPS, self.node.fps)
 
         previous_time = 0
         while not self.node.stopped:
@@ -32,4 +30,4 @@ class MonocularCamera():
         
         camera = cv2.VideoCapture(camera_id, cv2.CAP_V4L)
         camera.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter.fourcc('M','J','P','G'))
-        camera.set(cv2.CAP_PROP_FPS, 15)
+        camera.set(cv2.CAP_PROP_FPS, self.node.fps)

@@ -26,8 +26,10 @@ def generate_launch_description():
             {'topic_service': "/NAV/req_camera_nav_0"},
             {'topic_pub': "/NAV/feed_camera_nav_0"},
             {'bw_pub': "/NAV/bw_camera_nav_0"},
-            {'state': "/NAV/state_camera_nav_0"}
-            #the devrule is already in the dockerfile
+            {'state': "/NAV/state_camera_nav_0"},
+            {'fps': 25},
+            {'x': 1280},
+            {'y': 780}
         ],
     )
 
@@ -43,8 +45,10 @@ def generate_launch_description():
             {'bw_pub': "/NAV/bw_camera_nav_1"}, 
             {'devrule': "102122061110"},
             {'info': "/NAV/camera_info_"}, # we concatenate the devrule
-            {'depth_req': "/NAV/depth_req_camera_nav_1"} # To activate the depth
-
+            {'depth_req': "/NAV/depth_req_camera_nav_1"},
+            {'fps': 20},
+            {'x': 1280},
+            {'y': 780}
         ],
     )
 
@@ -60,7 +64,10 @@ def generate_launch_description():
             {'bw_pub': "/NAV/bw_camera_nav_2"}, 
             {'devrule': "135322062945"},
             {'info': "/NAV/camera_info_"}, # we concatenate the devrule
-            {'depth_req': "/NAV/depth_req_camera_nav_2"}
+            {'depth_req': "/NAV/depth_req_camera_nav_2"},
+            {'fps': 20},
+            {'x': 1280},
+            {'y': 780}
         ],
     )
 

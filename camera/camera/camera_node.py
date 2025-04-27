@@ -27,15 +27,21 @@ class CameraNode(Node):
         self.declare_parameter("bw_pub", self.default)
         self.declare_parameter("devrule", self.default)
         self.declare_parameter("state", self.default)
+        self.declare_parameter("fps", self.default)
+        self.declare_parameter("x", self.default)
+        self.declare_parameter("y", self.default)
         self.camera_type = self.get_parameter("camera_type").get_parameter_value().string_value
         self.service_topic = self.get_parameter("topic_service").get_parameter_value().string_value
         self.publisher_topic = self.get_parameter("topic_pub").get_parameter_value().string_value
         self.publisher_topic_bw = self.get_parameter("bw_pub").get_parameter_value().string_value
         self.devrule = self.get_parameter("devrule").get_parameter_value().string_value
         self.state_topic = self.get_parameter("state").get_parameter_value().string_value
+        self.fps = self.get_parameter("fps").get_parameter_value().integer_value
+        self.x = self.get_parameter("x").get_parameter_value().integer_value
+        self.y = self.get_parameter("y").get_parameter_value().integer_value
 
         # To be used for any camera
-        qos_profile = QoSProfile(
+        self.qos_profile = QoSProfile(
             reliability=QoSReliabilityPolicy.BEST_EFFORT, # BEST_EFFORT: message will attempt to send message but if it fails it will not try again
             durability=QoSDurabilityPolicy.VOLATILE, # VOLATILE: if no subscribers are listening, the message sent is not saved
             history=QoSHistoryPolicy.KEEP_LAST, # KEEP_LAST: only the last n = depth messages are stored in the queue
@@ -53,7 +59,6 @@ class CameraNode(Node):
 
         # Service to activate the camera. For now we hardcode the parameters so we use just a SetBool
         self.service_activation = self.create_service(SetBool, self.service_topic, self.start_cameras_callback, callback_group=self.callback_group)
-
 
         self.thread = threading.Thread(target=self.camera.publish_feeds, args=(self.devrule,))
     

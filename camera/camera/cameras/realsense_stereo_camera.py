@@ -13,10 +13,6 @@ class RealSenseStereoCamera():
 
         self.node = node
 
-        self.fps = 15
-        self.x = 1280
-        self.y = 720
-
         self.serial_number = self.node.devrule 
         self.node.declare_parameter("info", self.node.default)
         self.info = self.node.get_parameter("info").get_parameter_value().string_value
@@ -169,10 +165,10 @@ class RealSenseStereoCamera():
         self.node.get_logger().info("STARTING TO PUBLISH RGB")
     
         try:
-            self.config.enable_stream(rs.stream.color, self.x, self.y, rs.format.bgr8, self.fps)
+            self.config.enable_stream(rs.stream.color, self.node.x, self.node.y, rs.format.bgr8, self.node.fps)
             
             if self.depth_mode == True or self.depth_mode == 1:
-                self.config.enable_stream(rs.stream.depth, self.x, self.y, rs.format.z16, self.fps)
+                self.config.enable_stream(rs.stream.depth, self.node.x, self.node.y, rs.format.z16, self.node.fps)
                 spatial = rs.spatial_filter()
                 temporal = rs.temporal_filter()
                 hole_filling = rs.hole_filling_filter()
