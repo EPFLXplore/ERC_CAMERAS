@@ -103,10 +103,10 @@ class CameraNode(Node):
 
         return response
 
-    def calculate_bandwidth(self, current_time, previous_time, compressed_image):
+    def calculate_bandwidth(self, current_time, previous_time, compressed_image_len):
         elapsed_time = current_time - previous_time
         bw = Float32()
-        bw.data = float((len(compressed_image.data) * 8) / (elapsed_time * 1_000_000))  # Bandwidth in Mbps
+        bw.data = float(compressed_image_len * 8) / (elapsed_time * 1_000_000) # Bandwidth in Mbps
         
         return bw
 

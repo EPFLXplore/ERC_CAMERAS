@@ -19,6 +19,9 @@ class RealSenseStereoCamera():
         self.node.declare_parameter("depth_req", self.node.default)
         self.depth_request = self.node.get_parameter("depth_req").get_parameter_value().string_value
 
+        # Service to retrieve the parameters of the camera
+        self.camera_info_service = self.node.create_service(CameraParams, self.info + self.serial_number, self.camera_params_callback)
+
         self.pipe = rs.pipeline()  # Create a RealSense pipeline object.
         self.config = rs.config()  # Disable the depth stream, keep only the RGB stream
 
@@ -189,9 +192,6 @@ class RealSenseStereoCamera():
             # temporal.set_option(rs.option.filter_smooth_delta, 20)
             
             self.align = rs.align(rs.stream.depth)
-            
-            # Service to retrieve the parameters of the camera
-            self.camera_info_service = self.node.create_service(CameraParams, self.info + self.serial_number, self.camera_params_callback)
 
         except Exception as e:
             self.node.get_logger().error(f"Failed to start RealSense pipeline: {e}")
@@ -200,39 +200,39 @@ class RealSenseStereoCamera():
         previous_time = 0
         compressed_image = None
         while not self.node.stopped:
-            frame = self.get_rgb()
-            
-            if frame is not None:
                 
-                if self.depth_mode == 0:
-                    frame = self.get_rgb()
-                    compressed_image = self.bridge.cv2_to_compressed_imgmsg(frame)
-                    self.node.cam_pubs.publish(compressed_image)
-                    
-                else:
-                    frame_color, frame_depth = self.get_rgbd(spatial, temporal, hole_filling)
-                    
-                    compressed_image = self.bridge.cv2_to_compressed_imgmsg(frame_color)
-                    self.node.cam_pubs.publish(compressed_image)
-                    
-                    msg = Image()
-                    msg.header.stamp = self.node.get_clock().now().to_msg()
-                    msg.header.frame_id = "camera_hd_0_depth_frame"
-                    msg.height = frame_depth.shape[0]
-                    msg.width = frame_depth.shape[1]
-                    msg.encoding = "mono16"  # Encoding for uint16 depth images
-                    msg.is_bigendian = False
-                    msg.step = msg.width * 2  # 2 bytes per pixel
-                    msg.data = frame_depth.tobytes()
-                    
-                    full_msg = CompressedRGBD()
-                    full_msg.color = compressed_image
-                    full_msg.depth = msg
-                    self.color_depth_pub.publish(full_msg)
+            if self.depth_mode == 0:
+                frame = self.get_rgb()
+                compressed_image = self.bridge.cv2_to_compressed_imgmsg(frame)
+                self.node.cam_pubs.publish(compressed_image)
 
-                
                 current_time = time.time()
-                bw = self.node.calculate_bandwidth(current_time, previous_time, compressed_image)
+                bw = self.node.calculate_bandwidth(current_time, previous_time, len(compressed_image.data))
+                previous_time = current_time 
+                self.node.cam_bw.publish(bw)
+                
+            else:
+                frame_color, frame_depth = self.get_rgbd(spatial, temporal, hole_filling)
+                
+                compressed_image = self.bridge.cv2_to_compressed_imgmsg(frame_color)
+                self.node.cam_pubs.publish(compressed_image)
+                
+                msg = Image()
+                msg.header.stamp = self.node.get_clock().now().to_msg()
+                msg.height = frame_depth.shape[0]
+                msg.width = frame_depth.shape[1]
+                msg.encoding = "mono16"  # Encoding for uint16 depth images
+                msg.is_bigendian = False
+                msg.step = msg.width * 2  # 2 bytes per pixel
+                msg.data = frame_depth.tobytes()
+                
+                full_msg = CompressedRGBD()
+                full_msg.color = compressed_image
+                full_msg.depth = msg
+                self.color_depth_pub.publish(full_msg)
+
+                current_time = time.time()
+                bw = self.node.calculate_bandwidth(current_time, previous_time, len(compressed_image.data) + len(msg.data))
                 previous_time = current_time 
                 self.node.cam_bw.publish(bw)
         
