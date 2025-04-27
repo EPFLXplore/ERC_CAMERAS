@@ -27,9 +27,9 @@ class CameraNode(Node):
         self.declare_parameter("bw_pub", self.default)
         self.declare_parameter("devrule", self.default)
         self.declare_parameter("state", self.default)
-        self.declare_parameter("fps", self.default)
-        self.declare_parameter("x", self.default)
-        self.declare_parameter("y", self.default)
+        self.declare_parameter("fps", 10)
+        self.declare_parameter("x", 640)
+        self.declare_parameter("y", 480)
         self.camera_type = self.get_parameter("camera_type").get_parameter_value().string_value
         self.service_topic = self.get_parameter("topic_service").get_parameter_value().string_value
         self.publisher_topic = self.get_parameter("topic_pub").get_parameter_value().string_value
