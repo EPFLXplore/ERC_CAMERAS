@@ -7,6 +7,8 @@ from sensor_msgs.msg import CompressedImage
 from custom_msg.srv import CameraParams
 from custom_msg.msg import CompressedRGBD
 from std_srvs.srv import SetBool
+from sensor_msgs.msg import Image
+
 
 
 class OakDStereoCamera():
@@ -46,6 +48,7 @@ class OakDStereoCamera():
         if self.node.x == 1280:
             self.color_cam.setResolution(dai.ColorCameraProperties.SensorResolution.THE_720_P)
             
+        # THIS DOES NOT EXIST IN THE OAKD
         elif self.node.x == 640:
             self.color_cam.setResolution(dai.ColorCameraProperties.SensorResolution.THE_480_P)
             
@@ -179,7 +182,8 @@ class OakDStereoCamera():
                     full_msg = CompressedRGBD()
                     full_msg.color = compressed_msg
                     full_msg.depth = msg
-                    self.color_depth_pub.publish(full_msg)
+                    # self.color_depth_pub.publish(full_msg)
+                    self.depth_pubs.publish(full_msg)
 
                     current_time = time.time()
                     bw = self.node.calculate_bandwidth(current_time, previous_time, len(compressed_msg.data) + len(depth_img_normalized.tobytes()))
