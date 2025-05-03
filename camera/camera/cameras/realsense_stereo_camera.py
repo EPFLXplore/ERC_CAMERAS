@@ -169,20 +169,24 @@ class RealSenseStereoCamera():
     
         try:
             self.config.enable_stream(rs.stream.color, self.node.x, self.node.y, rs.format.bgr8, self.node.fps)
-            
+
             if self.depth_mode == True or self.depth_mode == 1:
                 self.config.enable_stream(rs.stream.depth, self.node.x, self.node.y, rs.format.z16, self.node.fps)
+
                 spatial = rs.spatial_filter()
                 temporal = rs.temporal_filter()
                 hole_filling = rs.hole_filling_filter()
+                self.align = rs.align(rs.stream.depth)
+
+            self.profile = self.pipe.start(self.config)
+            self.node.get_logger().info("Pipeline started successfully.")
+        
             
-            self.profile = self.pipe.start(self.config)        
-            
-            sensor = self.pipe.get_active_profile().get_device().query_sensors()[0]
+            #sensor = self.pipe.get_active_profile().get_device().query_sensors()[0]
 
             # Set the exposure anytime during the operation
             # For the image to be darker
-            sensor.set_option(rs.option.exposure, 8000)
+            #sensor.set_option(rs.option.exposure, 8000)
 
             # spatial.set_option(rs.option.filter_magnitude, 2)
             # spatial.set_option(rs.option.filter_smooth_alpha, 0.5)
@@ -191,8 +195,6 @@ class RealSenseStereoCamera():
             # temporal.set_option(rs.option.filter_smooth_alpha, 0.4)
             # temporal.set_option(rs.option.filter_smooth_delta, 20)
             
-            self.align = rs.align(rs.stream.depth)
-
         except Exception as e:
             self.node.get_logger().error(f"Failed to start RealSense pipeline: {e}")
             return

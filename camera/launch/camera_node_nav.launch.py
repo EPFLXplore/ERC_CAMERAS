@@ -26,10 +26,13 @@ def generate_launch_description():
             {'topic_service': "/NAV/req_camera_nav_0"},
             {'topic_pub': "/NAV/feed_camera_nav_0"},
             {'bw_pub': "/NAV/bw_camera_nav_0"},
+            {'depth_req': "/NAV/depth_req_camera_nav_0"},
+            {'devrule': ""},
+            {'info': "/NAV/camera_info_"}, # we concatenate the devrule
             {'state': "/NAV/state_camera_nav_0"},
-            {'fps': 25},
+            {'fps': 15},
             {'x': 1280},
-            {'y': 780}
+            {'y': 720}
         ],
     )
 
@@ -46,9 +49,10 @@ def generate_launch_description():
             {'devrule': "102122061110"},
             {'info': "/NAV/camera_info_"}, # we concatenate the devrule
             {'depth_req': "/NAV/depth_req_camera_nav_1"},
-            {'fps': 20},
+            {'state': "/NAV/state_camera_nav_1"},
+            {'fps': 15},
             {'x': 1280},
-            {'y': 780}
+            {'y': 720}
         ],
     )
 
@@ -65,9 +69,10 @@ def generate_launch_description():
             {'devrule': "135322062945"},
             {'info': "/NAV/camera_info_"}, # we concatenate the devrule
             {'depth_req': "/NAV/depth_req_camera_nav_2"},
-            {'fps': 20},
+            {'state': "/NAV/state_camera_nav_2"},
+            {'fps': 15},
             {'x': 1280},
-            {'y': 780}
+            {'y': 720}
         ],
     )
 
@@ -75,6 +80,6 @@ def generate_launch_description():
         [
             nav_realsense_aruco_camera_left,
             nav_realsense_aruco_camera_right,
-            #nav_front_camera,
+            nav_front_camera,
         ]
     )
