@@ -22,7 +22,7 @@ class MonocularCamera():
                 compressed_image = self.bridge.cv2_to_compressed_imgmsg(frame)
                 
                 current_time = time.time()
-                bw = self.node.calculate_bandwidth(current_time, previous_time, compressed_image)
+                bw = self.node.calculate_bandwidth(current_time, previous_time, len(compressed_image.data))
                 previous_time = current_time 
 
                 self.node.cam_pubs.publish(compressed_image)

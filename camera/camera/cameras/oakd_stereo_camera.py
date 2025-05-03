@@ -11,7 +11,6 @@ from std_srvs.srv import SetBool
 
 class OakDStereoCamera():
     def __init__(self, node):
-        # raise NotImplementedError(f"__init__ not implemented for {self._name}")
         self.node = node
         self.bridge = CvBridge()
 
