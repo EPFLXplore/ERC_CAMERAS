@@ -21,7 +21,7 @@ class RealSenseStereoCamera():
 
         # Service to retrieve the parameters of the camera
         self.camera_info_service = self.node.create_service(CameraParams, self.info + self.serial_number, self.camera_params_callback)
-
+        self.profile = None
         self.pipe = rs.pipeline()  # Create a RealSense pipeline object.
         self.config = rs.config()  # Disable the depth stream, keep only the RGB stream
 
@@ -63,31 +63,36 @@ class RealSenseStereoCamera():
 
 
     def get_depth_scale(self):
-        depth_scale = self.profile.get_device().first_depth_sensor().get_depth_scale()
-        return depth_scale
+        if self.profile is not None:
+            depth_scale = self.profile.get_device().first_depth_sensor().get_depth_scale()
+            return depth_scale
 
     # A method to get the intrinsic camera matrix.
     def get_intrinsics(self):
-        intrinsics = (
-            self.profile.get_stream(rs.stream.color)
-            .as_video_stream_profile()
-            .get_intrinsics()
-        )
-        intrinsics = {
-            "fx": intrinsics.fx,
-            "fy": intrinsics.fy,
-            "cx": intrinsics.ppx,
-            "cy": intrinsics.ppy,
-        }
-        return intrinsics
+        if self.profile is None:
+            self.node.get_logger().warn("CameraParams requested before pipeline was started.")
+        else:
+            intrinsics = (
+                self.profile.get_stream(rs.stream.color)
+                .as_video_stream_profile()
+                .get_intrinsics()
+            )
+            intrinsics = {
+                "fx": intrinsics.fx,
+                "fy": intrinsics.fy,
+                "cx": intrinsics.ppx,
+                "cy": intrinsics.ppy,
+            }
+            return intrinsics
     
     # A method to get the distortion coefficients.
     def get_coeffs(self):
-        intrinsics = (
-            self.profile.get_stream(rs.stream.color)
-            .as_video_stream_profile()
-            .get_intrinsics()
-        )
+        if self.profile is not None:
+            intrinsics = (
+                self.profile.get_stream(rs.stream.color)
+                .as_video_stream_profile()
+                .get_intrinsics()
+            )
 
         # Extract the distortion coefficients from the intrinsics object.
         return intrinsics.coeffs
@@ -110,16 +115,17 @@ class RealSenseStereoCamera():
         return depth
     
     def camera_params_callback(self, request, response):
-        intrinsics = self.get_intrinsics()
-        depth_scale = self.get_depth_scale()
-        distortion_coefficients = self.get_coeffs()
-        response.depth_scale = depth_scale
-        response.fx = float(intrinsics["fx"])
-        response.fy = float(intrinsics["fy"])
-        response.cx = float(intrinsics["cx"])
-        response.cy = float(intrinsics["cy"])
-        response.distortion_coefficients = distortion_coefficients
-       
+        if self.profile is not None:
+            intrinsics = self.get_intrinsics()
+            depth_scale = self.get_depth_scale()
+            distortion_coefficients = self.get_coeffs()
+            response.depth_scale = depth_scale
+            response.fx = float(intrinsics["fx"])
+            response.fy = float(intrinsics["fy"])
+            response.cx = float(intrinsics["cx"])
+            response.cy = float(intrinsics["cy"])
+            response.distortion_coefficients = distortion_coefficients
+        
         return response
 
     # A method to get the color image from the RealSense camera.
