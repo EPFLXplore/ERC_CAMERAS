@@ -66,6 +66,24 @@ def generate_launch_description():
             {'y': 480}
         ],
     )
+    
+    camera_cs_3 = Node(
+        package='camera',
+        executable='camera',
+        name='camera_cs_3',
+        namespace='/ROVER',
+        parameters=[
+            {'camera_type': "monocular"},
+            {'topic_service': "/ROVER/req_camera_cs_3"},
+            {'topic_pub': "/ROVER/feed_camera_cs_3"}, 
+            {'bw_pub': "/ROVER/bw_camera_cs_3"},
+            {'devrule': "/dev/video6"},
+            {'state': "/ROVER/state_camera_cs_3"},
+            {'fps': 15},
+            {'x': 640},
+            {'y': 480}
+        ],
+    )
 
     
     return LaunchDescription(
@@ -73,5 +91,6 @@ def generate_launch_description():
             camera_cs_0,
             camera_cs_1,
             camera_cs_2,
+            camera_cs_3
         ]
     )

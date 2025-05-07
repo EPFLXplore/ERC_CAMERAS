@@ -21,10 +21,11 @@ class OakDStereoCamera():
         self.info = self.node.get_parameter("info").get_parameter_value().string_value
         self.node.declare_parameter("depth_req", self.node.default)
         self.depth_request = self.node.get_parameter("depth_req").get_parameter_value().string_value
-
         self.depth_change = self.node.create_service(SetBool, self.depth_request, self.depth_callback)
         self.depth_mode = 0
 
+        self.node.declare_parameter("flip_camera", False)
+        self.flip_camera = self.node.get_parameter("flip_camera").get_parameter_value().bool_value
         # Service to retrieve the parameters of the camera
         self.camera_info_service = self.node.create_service(CameraParams, self.info + self.serial_number, self.camera_params_callback)
 
@@ -54,6 +55,7 @@ class OakDStereoCamera():
             
         self.color_cam.setFps(self.node.fps)
         self.color_cam.setInterleaved(False)  
+        
         # Non-interleaved frames for better compatibility with ros2 and opencv
 
         # stereo depth
@@ -112,7 +114,12 @@ class OakDStereoCamera():
         if rgb_frame is None:
             #self.node.get_logger().warn("No RGB frame received.")
             return None
-        return rgb_frame.getCvFrame()
+        
+        if self.flip_camera:
+            rotated_frame = cv2.rotate(rgb_frame.getCvFrame(), cv2.ROTATE_180)
+            return rotated_frame
+        else:
+            return rgb_frame.getCvFrame()
 
     def get_rgbd(self):
         """Retrieve both RGB and Depth frames."""
@@ -121,7 +128,12 @@ class OakDStereoCamera():
         if rgb_frame is None or depth_frame is None:
             #self.node.get_logger().warn("No RGB or Depth frame received.")
             return None, None
-        return rgb_frame, depth_frame
+        if self.flip_camera:
+            rotated_frame = cv2.rotate(rgb_frame.getCvFrame(), cv2.ROTATE_180)
+            rotated_depth = cv2.rotate(depth_frame, cv2.ROTATE_180)
+            return rotated_frame, rotated_depth
+        else:
+            return rgb_frame, depth_frame
 
     def get_depth(self):
         """Retrieve a Depth frame from the Depth queue."""
@@ -129,7 +141,14 @@ class OakDStereoCamera():
         if depth_frame is None:
             #self.node.get_logger().warn("No depth frame received.")
             return None
-        return depth_frame.getFrame()
+        
+        depth_image = depth_frame.getFrame()  # NumPy array (dtype=uint16, shape=H x W)
+        if self.flip_camera:
+            rotated_depth = cv2.rotate(depth_image, cv2.ROTATE_180)
+            return rotated_depth
+        else:
+            return depth_frame.getFrame()
+
 
     def get_intrinsics(self):
         calib_data = self.device.readCalibration()
