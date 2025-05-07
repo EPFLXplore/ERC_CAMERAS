@@ -32,7 +32,8 @@ def generate_launch_description():
             {'state': "/NAV/state_camera_nav_0"},
             {'fps': 15},
             {'x': 1280},
-            {'y': 720}
+            {'y': 720},
+            {'flip_camera':False}
         ],
     )
 

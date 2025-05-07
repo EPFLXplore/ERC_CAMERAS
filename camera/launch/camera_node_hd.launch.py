@@ -29,7 +29,8 @@ def generate_launch_description():
             {'state': "/ROVER/state_camera_hd_0"},
             {'fps': 15},
             {'x': 1280},
-            {'y': 720}
+            {'y': 720},
+            {'flip_camera':True}
         ],
     )
     return LaunchDescription(
