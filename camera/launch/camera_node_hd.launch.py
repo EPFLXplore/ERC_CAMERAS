@@ -22,6 +22,7 @@ def generate_launch_description():
             {'camera_type': "oakd_stereo"},
             {'topic_service': "/ROVER/req_camera_hd_0"},
             {'topic_pub': "/ROVER/feed_camera_hd_0"},
+            {'depth': "/ROVER/depth_camera_hd_0"},
             {'bw_pub': "/HD/bw_camera_hd_0"}, 
             {'devrule': "218622278049"},  # serial number written on the back of the camera
             {'info': "/ROVER/camera_info_"}, # we concatenate the devrule

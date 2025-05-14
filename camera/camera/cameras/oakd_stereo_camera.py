@@ -6,7 +6,6 @@ from cv_bridge import CvBridge
 from std_msgs.msg import Float32
 from sensor_msgs.msg import CompressedImage
 from custom_msg.srv import CameraParams
-from custom_msg.msg import CompressedRGBD
 from std_srvs.srv import SetBool
 from sensor_msgs.msg import Image
 
@@ -34,6 +33,9 @@ class OakDStereoCamera():
         self.info = self.node.get_parameter("info").get_parameter_value().string_value
         self.node.declare_parameter("depth_req", self.node.default)
         self.depth_request = self.node.get_parameter("depth_req").get_parameter_value().string_value
+        self.node.declare_parameter("depth", self.node.default)
+        self.depth_topic_string = self.node.get_parameter("depth").get_parameter_value().string_value
+        
         self.depth_change = self.node.create_service(SetBool, self.depth_request, self.depth_callback)
         self.depth_mode = False
 
@@ -110,65 +112,7 @@ class OakDStereoCamera():
         self.device.startPipeline(self.pipeline)
         self.queueEvents = []
         
-        '''
-        self.mono_left = self.pipeline.create(dai.node.MonoCamera)
-        self.mono_right = self.pipeline.create(dai.node.MonoCamera)
-
-        self.mono_left.setBoardSocket(dai.CameraBoardSocket.LEFT)
-        self.mono_right.setBoardSocket(dai.CameraBoardSocket.RIGHT)
-
-        self.mono_left.setResolution(dai.MonoCameraProperties.SensorResolution.THE_480_P)
-        self.mono_right.setResolution(dai.MonoCameraProperties.SensorResolution.THE_480_P)
-
-        # ColorCamera = rgb output from the oakd  
-        self.color_cam = self.pipeline.create(dai.node.ColorCamera)
-        self.color_cam.setBoardSocket(dai.CameraBoardSocket.RGB)
-        if self.node.x == 1280:
-            self.color_cam.setResolution(dai.ColorCameraProperties.SensorResolution.THE_720_P)
-            
-        self.color_cam.setFps(self.node.fps)
-        self.color_cam.setInterleaved(False)  
-        
-        rgbCamSocket = dai.CameraBoardSocket.CAM_A
-        self.color_cam.setBoardSocket(rgbCamSocket)
-        
-        # Non-interleaved frames for better compatibility with ros2 and opencv
-
-        # stereo depth
-        self.stereo = self.pipeline.create(dai.node.StereoDepth)
-        self.stereo.setDepthAlign(rgbCamSocket)
-        #self.stereo.setOutputDepth(True)
-        #self.stereo.setOutputRectified(True)
-        self.stereo.setConfidenceThreshold(255)
-        self.mono_right.setFps(15)
-        self.mono_left.setFps(15)
-
-        # Link Mono Cameras to Stereo Depth
-        self.mono_left.out.link(self.stereo.left)
-        self.mono_right.out.link(self.stereo.right)
-
-        # Link ColorCamera video output to XLinkOut for streaming rgb frames
-        self.rgb_out = self.pipeline.create(dai.node.XLinkOut)
-        self.rgb_out.setStreamName("rgb")
-        self.color_cam.video.link(self.rgb_out.input)
-
-        # Link StereoDepth depth output to XLinkOut for streaming
-        self.depth_out = self.pipeline.create(dai.node.XLinkOut)
-        self.depth_out.setStreamName("depth")
-        self.stereo.depth.link(self.depth_out.input) # before .depth.
-
-        # try to connect to oakd
-        try:
-            self.device = dai.Device(self.pipeline)
-            self.rgb_queue = self.device.getOutputQueue(name="rgb", maxSize=4, blocking=False)
-            self.depth_queue = self.device.getOutputQueue(name="depth", maxSize=4, blocking=False)
-            self.node.get_logger().info("OAK-D pipeline started successfully.")
-        except Exception as e:
-            self.node.get_logger().error(f"Failed to initialize OAK-D: {e}")
-            raise
-        
-        '''
-        self.depth_pubs = self.node.create_publisher(CompressedRGBD, self.node.publisher_topic + "/depth", 1)
+        self.depth_pubs = self.node.create_publisher(Image, self.depth_topic_string, qos_profile=self.node.qos_profile)
 
     # Depth mode: 0 => Off, 1 => On
     def depth_callback(self, request, response):
@@ -201,7 +145,6 @@ class OakDStereoCamera():
 
     def get_rgbd(self):
         """Retrieve both RGB and Depth frames."""
-        self.node.get_logger().info("666")
         rgb_frame = self.get_rgb()
         depth_frame = self.get_depth()
         
@@ -227,9 +170,7 @@ class OakDStereoCamera():
 
     def get_depth(self):
         """Retrieve a Depth frame from the Depth queue."""
-        self.node.get_logger().info("erfg")
         depth_frame = self.depth_queue.get()
-        self.node.get_logger().info("gggg")
         if depth_frame is not None:
         
             depth_image = depth_frame.getFrame()  # NumPy array (dtype=uint16, shape=H x W)
@@ -303,7 +244,8 @@ class OakDStereoCamera():
                     if len(frameDisp.shape) < 3:
                         frameDisp = cv2.cvtColor(frameDisp, cv2.COLOR_GRAY2BGR)
                      
-                    depth_img_normalized = cv2.normalize(frameDisp, None, 0, 255, cv2.NORM_MINMAX)
+                    # get a portion of the depth for bandwidth improvements
+                    depth_img_normalized = cv2.normalize(frameDisp, None, 0, 255, cv2.NORM_MINMAX)[300:980, 100:620]
 
                     msg = Image()
                     msg.header.stamp = self.node.get_clock().now().to_msg()
@@ -313,12 +255,13 @@ class OakDStereoCamera():
                     msg.is_bigendian = False
                     msg.step = msg.width * 2  # 2 bytes per pixel
                     msg.data = depth_img_normalized.tobytes()
+                    self.depth_pubs.publish(msg)  
                     
-                    full_msg = CompressedRGBD()
-                    full_msg.color = compressed_msg
-                    full_msg.depth = msg
-                    self.depth_pubs.publish(full_msg)                    
-                    
+                    current_time = time.time()
+                    bw = self.node.calculate_bandwidth(current_time, previous_time, len(compressed_msg.data) + len(msg.data))
+                    previous_time = current_time 
+                    self.node.cam_bw.publish(bw)
+                                        
                     frameRgb = None
                     frameDisp = None        
                 
@@ -356,152 +299,3 @@ class OakDStereoCamera():
                     self.node.cam_bw.publish(bw)
                     
                     frameRgb = None
-            
-
-        '''
-        previous_time = 0
-        encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 40]  # Lower quality to save bandwidth
-        while not self.node.stopped:
-
-            compressed_msg = None
-
-            if self.depth_mode == True or self.depth_mode == 1:
-                rgb_frame, depth_img = self.get_rgbd()
-
-                if depth_img is not None and rgb_frame is not None:
-
-                    # success, encoded_image = cv2.imencode('.jpg', rgb_frame, encode_param)
-                    # if not success:
-                    #     self.node.get_logger().warn("Failed to compress RGB frame.")
-                    #     continue
-
-                    # Convert encoded bytes to ROS-compressed message
-                    compressed_msg = CompressedImage()
-                    compressed_msg.format = "jpeg"
-                    compressed_msg.data = rgb_frame.tobytes()
-                    self.node.cam_pubs.publish(compressed_msg)
-
-                    depth_img_normalized = cv2.normalize(depth_img, None, 0, 255, cv2.NORM_MINMAX)
-
-
-                    msg = Image()
-                    msg.header.stamp = self.node.get_clock().now().to_msg()
-                    msg.height = depth_img_normalized.shape[0]
-                    msg.width = depth_img_normalized.shape[1]
-                    msg.encoding = "mono16"  # Encoding for uint16 depth images
-                    msg.is_bigendian = False
-                    msg.step = msg.width * 2  # 2 bytes per pixel
-                    msg.data = depth_img_normalized.tobytes()
-                    
-                    full_msg = CompressedRGBD()
-                    full_msg.color = compressed_msg
-                    full_msg.depth = msg
-                    # self.color_depth_pub.publish(full_msg)
-                    self.depth_pubs.publish(full_msg)
-
-                    current_time = time.time()
-                    bw = self.node.calculate_bandwidth(current_time, previous_time, len(compressed_msg.data) + len(depth_img_normalized.tobytes()))
-                    previous_time = current_time 
-                    self.node.cam_bw.publish(bw)
-
-            else:
-
-                rgb_img = self.get_rgb()
-                if rgb_img is not None:
-                    
-                    # Compress RGB frame with lower quality
-                    success, encoded_image = cv2.imencode('.jpg', rgb_img, encode_param)
-                    if not success:
-                        self.node.get_logger().warn("Failed to compress RGB frame.")
-                        continue
-
-                    # Convert encoded bytes to ROS-compressed message
-                    compressed_msg = CompressedImage()
-                    compressed_msg.format = "jpeg"
-                    compressed_msg.data = encoded_image.tobytes()
-                    self.node.cam_pubs.publish(compressed_msg)
-
-                    current_time = time.time()
-                    bw = self.node.calculate_bandwidth(current_time, previous_time, len(compressed_msg.data))
-                    previous_time = current_time 
-                    self.node.cam_bw.publish(bw)
-
-        self.device.close()
-        '''
-        
-                # frameRgb = None
-        # frameDisp = None
-        # self.names = None
-        # previous_time = 0
-        
-        # while not self.node.stopped:
-                        
-        #     if self.depth_mode == True:
-        #         self.names = ['rgb', 'disp']
-                
-        #         for name in self.names:
-        #             msg = self.device.getOutputQueue(name).tryGet()
-        #             if msg is not None:
-        #                 add_msg(msg, name)
-                    
-        #         synced = get_msgs()
-        #         if synced:
-        #             frameRgb = synced["rgb"].getCvFrame()
-        #             frameDisp = synced["disp"].getFrame()
-        #             maxDisparity = self.stereo.initialConfig.getMaxDisparity()
-        #             frameDisp = (frameDisp * 255. / maxDisparity).astype(np.uint8)
-        #             frameDisp = cv2.applyColorMap(frameDisp, cv2.COLORMAP_TURBO)
-        #             frameDisp = np.ascontiguousarray(frameDisp)
-                    
-        #             # Need to have both frames in BGR format before blending
-        #             if len(frameDisp.shape) < 3:
-        #                 frameDisp = cv2.cvtColor(frameDisp, cv2.COLOR_GRAY2BGR)
-                    
-        #             compressed_msg = CompressedImage()
-        #             compressed_msg.format = "jpeg"
-        #             compressed_msg.data = frameRgb.tobytes()
-        #             self.node.cam_pubs.publish(compressed_msg)
-
-        #             depth_img_normalized = cv2.normalize(frameDisp, None, 0, 255, cv2.NORM_MINMAX)
-
-
-        #             msg = Image()
-        #             msg.header.stamp = self.node.get_clock().now().to_msg()
-        #             msg.height = depth_img_normalized.shape[0]
-        #             msg.width = depth_img_normalized.shape[1]
-        #             msg.encoding = "mono16"  # Encoding for uint16 depth images
-        #             msg.is_bigendian = False
-        #             msg.step = msg.width * 2  # 2 bytes per pixel
-        #             msg.data = depth_img_normalized.tobytes()
-                    
-        #             full_msg = CompressedRGBD()
-        #             full_msg.color = compressed_msg
-        #             full_msg.depth = msg
-        #             # self.color_depth_pub.publish(full_msg)
-        #             self.depth_pubs.publish(full_msg)
-
-        #             current_time = time.time()
-        #             bw = self.node.calculate_bandwidth(current_time, previous_time, len(compressed_msg.data) + len(depth_img_normalized.tobytes()))
-        #             previous_time = current_time 
-        #             self.node.cam_bw.publish(bw)
-                    
-        #             frameRgb = None
-        #             frameDisp = None
-            
-        #     else:
-        #         msg = self.device.getOutputQueue(name='rgb', maxSize=4, blocking=False).tryGet()
-        #         frameRgb = msg.getCvFrame()
-        #         self.node.get_logger().info("dvdrgf")
-                
-        #         compressed_msg = CompressedImage()
-        #         compressed_msg.format = "jpeg"
-        #         compressed_msg.data = frameRgb.tobytes()
-        #         self.node.cam_pubs.publish(compressed_msg)
-
-        #         current_time = time.time()
-        #         bw = self.node.calculate_bandwidth(current_time, previous_time, len(compressed_msg.data))
-        #         previous_time = current_time 
-        #         self.node.cam_bw.publish(bw)
-                        
-        # self.device.close()
-        
