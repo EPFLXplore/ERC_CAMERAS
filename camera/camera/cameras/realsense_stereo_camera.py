@@ -158,11 +158,13 @@ class RealSenseStereoCamera():
     
     def get_rgb(self):   
         try:
-            frameset = self.pipe.wait_for_frames()
+            #frameset = self.pipe.wait_for_frames()
+            frameset = self.pipe.poll_for_frames()
             color_frame = frameset.get_color_frame()
             if not color_frame:
                 raise RuntimeError("No color frame received")
-            color = np.asanyarray(color_frame.get_data())
+            else:
+                color = np.asanyarray(color_frame.get_data())
             return color
         except RuntimeError as e:
             self.node.get_logger().error(f"Error getting RGB frame: {e}")
@@ -174,7 +176,9 @@ class RealSenseStereoCamera():
         self.node.get_logger().info("STARTING TO PUBLISH RGB")
     
         try:
-            self.config.enable_stream(rs.stream.color, self.node.x, self.node.y, rs.format.bgr8, self.node.fps)
+            #self.config.enable_stream(rs.stream.color, self.node.x, self.node.y, rs.format.bgr8, self.node.fps)
+
+            self.config.enable_stream(rs.stream.color, self.node.x, self.node.y, rs.format.y8, self.node.fps)
 
             if self.depth_mode == True or self.depth_mode == 1:
                 self.config.enable_stream(rs.stream.depth, self.node.x, self.node.y, rs.format.z16, self.node.fps)
@@ -210,14 +214,20 @@ class RealSenseStereoCamera():
         while not self.node.stopped:
                 
             if self.depth_mode == 0:
+                
                 frame = self.get_rgb()
-                compressed_image = self.bridge.cv2_to_compressed_imgmsg(frame)
-                self.node.cam_pubs.publish(compressed_image)
+                if frame is not None:
+                    compressed_image = self.bridge.cv2_to_compressed_imgmsg(gray, dst_format="jpeg")
 
-                current_time = time.time()
-                bw = self.node.calculate_bandwidth(current_time, previous_time, len(compressed_image.data))
-                previous_time = current_time 
-                self.node.cam_bw.publish(bw)
+                    self.node.cam_pubs.publish(compressed_image)
+
+                    current_time = time.time()
+                    bw = self.node.calculate_bandwidth(current_time, previous_time, len(compressed_image.data))
+                    previous_time = current_time 
+                    self.node.cam_bw.publish(bw)
+                # else:
+                #     self.node.get_logger().error(f"AAAAAhhhhh")
+
                 
             else:
                 frame_color, frame_depth = self.get_rgbd(spatial, temporal, hole_filling)
