@@ -9,19 +9,6 @@ from custom_msg.srv import CameraParams
 from std_srvs.srv import SetBool
 from sensor_msgs.msg import Image
 
-rgbWeight = 0.4
-depthWeight = 0.6
-alpha = None
-
-def updateBlendWeights(percent_rgb):
-    """
-    Update the rgb and depth weights used to blend depth/rgb image
-    @param[in] percent_rgb The rgb weight expressed as a percentage (0..100)
-    """
-    global depthWeight
-    global rgbWeight
-    rgbWeight = float(percent_rgb)/100.0
-    depthWeight = 1.0 - rgbWeigh
 
 class OakDStereoCamera():
     def __init__(self, node):
@@ -45,74 +32,48 @@ class OakDStereoCamera():
         # Service to retrieve the parameters of the camera
         self.camera_info_service = self.node.create_service(CameraParams, self.info + self.serial_number, self.camera_params_callback)
         
+        #publishing timer
+        # self.timer_cam = self.node.create_timer(
+        #     1/15.0,
+        #     self._on_timer
+        # )
+
         self.pipeline = dai.Pipeline()
         
-        # The disparity is computed at this resolution, then upscaled to RGB resolution
-        monoResolution = dai.MonoCameraProperties.SensorResolution.THE_720_P
         
         # Create pipeline
-        self.pipeline = dai.Pipeline()
-        self.device = dai.Device()
+        #self.pipeline = dai.Pipeline()
+
         self.queueNames = []
         
-        # Define sources and outputs
-        camRgb = self.pipeline.create(dai.node.Camera)
-        left = self.pipeline.create(dai.node.MonoCamera)
-        right = self.pipeline.create(dai.node.MonoCamera)
-        self.stereo = self.pipeline.create(dai.node.StereoDepth)
-
+        # ----------------RGB-------------------
+        # Define sources and output
+        camRgb = self.pipeline.create(dai.node.ColorCamera)
+        enc = self.pipeline.create(dai.node.VideoEncoder)
         rgbOut = self.pipeline.create(dai.node.XLinkOut)
-        disparityOut = self.pipeline.create(dai.node.XLinkOut)
 
         rgbOut.setStreamName("rgb")
         self.queueNames.append("rgb")
-        disparityOut.setStreamName("disp")
-        self.queueNames.append("disp")
 
-        # Properties
-        rgbCamSocket = dai.CameraBoardSocket.CAM_A
-
-        camRgb.setBoardSocket(rgbCamSocket)
-        camRgb.setSize(self.node.x, self.node.y)
-        camRgb.setFps(self.node.fps)
-
-        # For now, RGB needs fixed focus to properly align with depth.
-        # This value was used during calibration
-        try:
-            calibData = self.device.readCalibration2()
-            lensPosition = calibData.getLensPosition(rgbCamSocket)
-            if lensPosition:
-                camRgb.initialControl.setManualFocus(lensPosition)
-        except:
-            raise
         
-        left.setResolution(monoResolution)
-        left.setCamera("left")
-        left.setFps(5)
-        right.setResolution(monoResolution)
-        right.setCamera("right")
-        right.setFps(5)
+        # RGB Properties
+        rgbCamSocket = dai.CameraBoardSocket.CAM_A
+        camRgb.setBoardSocket(rgbCamSocket)
+        # camRgb.setVideoSize(self.node.x, self.node.y)
+        camRgb.setResolution(dai.ColorCameraProperties.SensorResolution.THE_720_P)
+        camRgb.setFps(self.node.fps)
+        enc.setDefaultProfilePreset(15, dai.VideoEncoderProperties.Profile.H264_MAIN)
 
-        self.stereo.setDefaultProfilePreset(dai.node.StereoDepth.PresetMode.HIGH_DENSITY)
-        # LR-check is required for depth alignment
-        self.stereo.setLeftRightCheck(True)
-        self.stereo.setDepthAlign(rgbCamSocket)
+        # OAKD Hardware encoder for rgb jpeg stream
+        camRgb.video.link(enc.input)
+        enc.bitstream.link(rgbOut.input)# already-compressed JPEG
 
-        # Linking
-        camRgb.video.link(rgbOut.input)
-        left.out.link(self.stereo.left)
-        right.out.link(self.stereo.right)
-        self.stereo.disparity.link(disparityOut.input)
+        # ------------------ end RGB ------------------
+        self.device = dai.Device(self.pipeline)
+        self.rgbQueue = self.device.getOutputQueue("rgb", maxSize=4, blocking=False)
 
-        camRgb.setMeshSource(dai.CameraProperties.WarpMeshSource.CALIBRATION)
-        if alpha is not None:
-            camRgb.setCalibrationAlpha(alpha)
-            self.stereo.setAlphaScaling(alpha)
-            
-        self.device.startPipeline(self.pipeline)
         self.queueEvents = []
         
-        self.depth_pubs = self.node.create_publisher(Image, self.depth_topic_string, qos_profile=self.node.qos_profile)
 
     # Depth mode: 0 => Off, 1 => On
     def depth_callback(self, request, response):
@@ -134,7 +95,7 @@ class OakDStereoCamera():
 
     def get_rgb(self):
         """Retrieve an RGB frame from the RGB queue."""
-        rgb_frame = self.rgb_queue.tryGet()
+        rgb_frame = self.rgbQueue.tryGet()
         if rgb_frame is not None:
         
             if self.flip_camera:
@@ -189,113 +150,72 @@ class OakDStereoCamera():
     def get_coeffs(self):
         calib_data = self.device.readCalibration()
         return calib_data.getDistortionCoefficients(dai.CameraBoardSocket.RGB)
-    
+
+    # def _on_timer(self):
+    #     if not self.node.stopped:
+    #         rgb_pkt = self.rgbQueue.tryGet() #blocking
+    #         if rgb_pkt:
+    #             compressed = rgb_pkt.getData()
+    #             ros_msg = CompressedImage()
+    #             ros_msg.format = "jpeg"
+    #             ros_msg.data = bytearray(compressed)
+    #             self.node.cam_pubs.publish(ros_msg)
+    #         else:
+    #             return
+
     def publish_feeds(self, devrule=None):
         """Publish RGB and Depth feeds."""
 
         self.node.get_logger().info("STARTING TO PUBLISH RGB")
-        
+        #time.sleep(1)
         frameRgb = None
-        frameDisp = None
         encoded_image = None
         previous_time = 0
-        encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 40]  # Lower quality to save bandwidth
+        # encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 40]  # Lower quality to save bandwidth
         
         while not self.node.stopped:
-        
-            if self.depth_mode:
-                queueEvents = self.device.getQueueEvents(("rgb", "disp"))
-                
-                latestPacket = {}
-                latestPacket["rgb"] = None
-                latestPacket["disp"] = None
-                
-                for queueName in queueEvents:
-                    packets = self.device.getOutputQueue(queueName).tryGetAll()
-                    if len(packets) > 0:
-                        latestPacket[queueName] = packets[-1]
-            
-                if latestPacket["rgb"] is not None:
-                    frameRgb = latestPacket["rgb"].getCvFrame()
-                    
-                    success, encoded_image = cv2.imencode('.jpg', frameRgb, encode_param)
-                    if not success:
-                        self.node.get_logger().warn("Failed to compress RGB frame.")
-                        continue
-
-                if latestPacket["disp"] is not None:
-                    frameDisp = latestPacket["disp"].getFrame()
-                    maxDisparity = self.stereo.initialConfig.getMaxDisparity()
-                    # Optional, extend range 0..95 -> 0..255, for a better visualisation
-                    if 1: frameDisp = (frameDisp * 255. / maxDisparity).astype(np.uint8)
-                    # Optional, apply false colorization
-                    if 1: frameDisp = cv2.applyColorMap(frameDisp, cv2.COLORMAP_HOT)
-                    frameDisp = np.ascontiguousarray(frameDisp)
-            
-                if encoded_image is not None and frameDisp is not None:
-                    
-                    # Convert encoded bytes to ROS-compressed message
-                    compressed_msg = CompressedImage()
-                    compressed_msg.format = "jpeg"
-                    compressed_msg.data = encoded_image.tobytes()
-                    self.node.cam_pubs.publish(compressed_msg)
-                    
-                    # Need to have both frames in BGR format before blending
-                    if len(frameDisp.shape) < 3:
-                        frameDisp = cv2.cvtColor(frameDisp, cv2.COLOR_GRAY2BGR)
-                     
-                    # get a portion of the depth for bandwidth improvements
-                    depth_img_normalized = cv2.normalize(frameDisp, None, 0, 255, cv2.NORM_MINMAX)[300:980, 100:620]
-
-                    msg = Image()
-                    msg.header.stamp = self.node.get_clock().now().to_msg()
-                    msg.height = depth_img_normalized.shape[0]
-                    msg.width = depth_img_normalized.shape[1]
-                    msg.encoding = "mono16"  # Encoding for uint16 depth images
-                    msg.is_bigendian = False
-                    msg.step = msg.width * 2  # 2 bytes per pixel
-                    msg.data = depth_img_normalized.tobytes()
-                    self.depth_pubs.publish(msg)  
-                    
-                    current_time = time.time()
-                    bw = self.node.calculate_bandwidth(current_time, previous_time, len(compressed_msg.data) + len(msg.data))
-                    previous_time = current_time 
-                    self.node.cam_bw.publish(bw)
-                                        
-                    frameRgb = None
-                    frameDisp = None        
-                
-                
+            rgb_pkt = self.rgbQueue.tryGet() #blocking
+            if rgb_pkt:
+                compressed = rgb_pkt.getData()
+                ros_msg = CompressedImage()
+                ros_msg.format = "jpeg"
+                ros_msg.data = bytearray(compressed)
+                self.node.cam_pubs.publish(ros_msg)
+                time.sleep(1/15)
             else:
-                self.queueEvents = self.device.getQueueEvents(("rgb"))
+                time.sleep(0.001)
+
+
+
+                # self.queueEvents = self.device.getQueueEvents(("rgb"))
                                 
-                latestPacket = {}
-                latestPacket["rgb"] = None
+                # latestPacket = {}
+                # latestPacket["rgb"] = None
                 
-                for queueName in self.queueEvents:
-                    packets = self.device.getOutputQueue(queueName).tryGetAll()
-                    if len(packets) > 0:
-                        latestPacket[queueName] = packets[-1]
+                # for queueName in self.queueEvents:
+                #     packets = self.device.getOutputQueue(queueName).tryGetAll()
+                #     if len(packets) > 0:
+                #         latestPacket[queueName] = packets[-1]
                 
-                if latestPacket["rgb"] is not None:
-                    frameRgb = latestPacket["rgb"].getCvFrame()
+                # if latestPacket["rgb"] is not None:
+                #     frameRgb = latestPacket["rgb"].getCvFrame()
                     
-                    success, encoded_image = cv2.imencode('.jpg', frameRgb, encode_param)
-                    if not success:
-                        self.node.get_logger().warn("Failed to compress RGB frame.")
-                        continue
+                #     success, encoded_image = cv2.imencode('.jpg', frameRgb, encode_param)
+                #     if not success:
+                #         self.node.get_logger().warn("Failed to compress RGB frame.")
+                #         continue
                     
-                if encoded_image is not None:
+                # if encoded_image is not None:
                     
-                    # Convert encoded bytes to ROS-compressed message
-                    compressed_msg = CompressedImage()
-                    compressed_msg.format = "jpeg"
-                    compressed_msg.data = encoded_image.tobytes()
-                    self.node.cam_pubs.publish(compressed_msg)
+                #     # Convert encoded bytes to ROS-compressed message
+                #     compressed_msg = CompressedImage()
+                #     compressed_msg.format = "jpeg"
+                #     compressed_msg.data = encoded_image.tobytes()
+                #     self.node.cam_pubs.publish(compressed_msg)
                     
-                    current_time = time.time()
-                    bw = self.node.calculate_bandwidth(current_time, previous_time, len(compressed_msg.data))
-                    previous_time = current_time 
-                    self.node.cam_bw.publish(bw)
+                #     current_time = time.time()
+                #     bw = self.node.calculate_bandwidth(current_time, previous_time, len(compressed_msg.data))
+                #     previous_time = current_time 
+                #     self.node.cam_bw.publish(bw)
                     
-                    frameRgb = None
+                #     frameRgb = None
