@@ -49,7 +49,7 @@ class CameraNode(Node):
         )
 
         # Initialize publishers before creating the camera instance
-        self.cam_pubs = self.create_publisher(CompressedImage, self.publisher_topic, 1, callback_group=self.callback_group)
+        self.cam_pubs = self.create_publisher(CompressedImage, self.publisher_topic, qos_profile=self.qos_profile, callback_group=self.callback_group)
         self.cam_bw = self.create_publisher(Float32, self.publisher_topic_bw, 1)
         self.state = self.create_publisher(Bool, self.state_topic, 1)
 
