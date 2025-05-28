@@ -62,14 +62,18 @@ class OakDStereoCamera():
         # camRgb.setVideoSize(self.node.x, self.node.y)
         camRgb.setResolution(dai.ColorCameraProperties.SensorResolution.THE_720_P)
         camRgb.setFps(self.node.fps)
-        enc.setDefaultProfilePreset(15, dai.VideoEncoderProperties.Profile.H264_MAIN)
+        enc.setDefaultProfilePreset(30, dai.VideoEncoderProperties.Profile.MJPEG)
+        enc.setLossless(False)
+        enc.setQuality(30)
+        enc.setNumFramesPool(2)
+        enc.setFrameRate(self.node.fps)
 
         # OAKD Hardware encoder for rgb jpeg stream
         camRgb.video.link(enc.input)
         enc.bitstream.link(rgbOut.input)# already-compressed JPEG
 
         # ------------------ end RGB ------------------
-        self.device = dai.Device(self.pipeline)
+        self.device = dai.Device(self.pipeline, maxUsbSpeed=dai.UsbSpeed.SUPER_PLUS)  #10Gbps USB3.2 gen2
         self.rgbQueue = self.device.getOutputQueue("rgb", maxSize=4, blocking=False)
 
         self.queueEvents = []
@@ -174,14 +178,19 @@ class OakDStereoCamera():
         # encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 40]  # Lower quality to save bandwidth
         
         while not self.node.stopped:
-            rgb_pkt = self.rgbQueue.tryGet() #blocking
+            rgb_pkt = self.rgbQueue.tryGet() #non blocking
             if rgb_pkt:
                 compressed = rgb_pkt.getData()
                 ros_msg = CompressedImage()
                 ros_msg.format = "jpeg"
                 ros_msg.data = bytearray(compressed)
                 self.node.cam_pubs.publish(ros_msg)
-                time.sleep(1/15)
+                current_time = time.time()
+                bw = self.node.calculate_bandwidth(current_time, previous_time, len(ros_msg.data))
+                previous_time = current_time 
+                self.node.cam_bw.publish(bw)
+
+                time.sleep(1/(self.node.fps))
             else:
                 time.sleep(0.001)
 
