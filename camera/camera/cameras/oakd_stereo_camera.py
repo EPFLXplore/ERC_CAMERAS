@@ -42,6 +42,7 @@ class OakDStereoCamera():
 
         self.pipeline = dai.Pipeline()
 
+        # monoResolution = dai.MonoCameraProperties.SensorResolution.THE_400_P
         monoResolution = dai.MonoCameraProperties.SensorResolution.THE_720_P
 
         self.pipeline = dai.Pipeline()
@@ -62,6 +63,7 @@ class OakDStereoCamera():
 
         rgbCamSocket = dai.CameraBoardSocket.CAM_A
         camRgb.setBoardSocket(rgbCamSocket)
+        # camRgb.setResolution(dai.ColorCameraProperties.SensorResolution.THE_720_P)
         camRgb.setResolution(dai.ColorCameraProperties.SensorResolution.THE_1080_P)
         camRgb.setIspScale(2, 3)
         camRgb.setFps(self.node.fps)
@@ -82,6 +84,7 @@ class OakDStereoCamera():
         right.setFps(5)
 
         self.stereo.setDefaultProfilePreset(dai.node.StereoDepth.PresetMode.HIGH_DENSITY)
+        # self.stereo.setDefaultProfilePreset(dai.node.StereoDepth.PresetMode.DEFAULT)
         self.stereo.setLeftRightCheck(True)
         self.stereo.setDepthAlign(rgbCamSocket)
 
@@ -144,17 +147,20 @@ class OakDStereoCamera():
     def publish_feeds(self, devrule=None):
         self.node.get_logger().info("STARTING TO PUBLISH RGB")
         encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 40]
+        # encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 25]
         previous_time = 0
 
         while not self.node.stopped:
             if self.depth_mode:
                 rgb_queue = self.device.getOutputQueue("rgb")
                 depth_queue = self.device.getOutputQueue("depth")
+                # self.node.get_logger().info("DEPTH MODE IS ON")
 
                 rgb_packet = rgb_queue.tryGet()
                 depth_packet = depth_queue.tryGet()
 
                 if rgb_packet is not None:
+                    # self.node.get_logger().info("--------------RGB NOT NONE --------------")
                     frameRgb = rgb_packet.getCvFrame()
                     success, encoded_image = cv2.imencode('.jpg', frameRgb, encode_param)
                     if not success:
@@ -168,6 +174,7 @@ class OakDStereoCamera():
                     self.node.cam_pubs.publish(compressed_msg)
 
                 if depth_packet is not None:
+                    # self.node.get_logger().info("--------------DEPTH NOT NONE --------------")
                     depth_frame = depth_packet.getFrame()
                     depth_frame = np.ascontiguousarray(depth_frame)
 
@@ -184,11 +191,13 @@ class OakDStereoCamera():
                 if rgb_packet is not None and depth_packet is not None:
                     current_time = time.time()
                     total_bytes = len(encoded_image.tobytes()) + len(depth_frame.tobytes())
+                    # total_bytes = len(encoded_image.tobytes())
                     bw = self.node.calculate_bandwidth(current_time, previous_time, total_bytes)
                     previous_time = current_time
                     self.node.cam_bw.publish(bw)
 
             else:
+                # self.node.get_logger().info("DEPTH MODE IS OFFFFF")
                 rgb_queue = self.device.getOutputQueue("rgb")
                 rgb_packet = rgb_queue.tryGet()
                 if rgb_packet is not None:
@@ -203,7 +212,7 @@ class OakDStereoCamera():
                     compressed_msg.format = "jpeg"
                     compressed_msg.data = encoded_image.tobytes()
                     self.node.cam_pubs.publish(compressed_msg)
-
+                    
                     current_time = time.time()
                     bw = self.node.calculate_bandwidth(current_time, previous_time, len(compressed_msg.data))
                     previous_time = current_time
