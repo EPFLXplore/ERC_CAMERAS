@@ -133,7 +133,7 @@ class OakDStereoCamera():
     def publish_feeds(self, devrule=None):
         self.node.get_logger().info("STARTING TO PUBLISH RGB")
         # encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 40]
-        # encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 25]
+        encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 25]
         previous_time = 0
 
         while not self.node.stopped:
