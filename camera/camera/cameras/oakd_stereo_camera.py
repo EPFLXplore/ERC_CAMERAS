@@ -55,7 +55,7 @@ class OakDStereoCamera():
         # for aligned?
         #camRgb.setIspScale(2, 3)
         #
-        # camRgb.setFps(self.node.fps)
+        camRgb.setFps(self.node.fps)
 
         try:
             calibData = self.device.readCalibration2()
@@ -80,6 +80,7 @@ class OakDStereoCamera():
 
         self.stereo.setDefaultProfilePreset(dai.node.StereoDepth.PresetMode.DEFAULT)
         self.stereo.setLeftRightCheck(True)
+        #self.stereo.setExtendedDisparity(True)
         #self.stereo.setDepthAlign(rgbCamSocket)
 
         camRgb.isp.link(rgbOut.input)
