@@ -39,7 +39,6 @@ class OakDStereoCamera():
         camRgb = self.pipeline.create(dai.node.ColorCamera)
         left = self.pipeline.create(dai.node.MonoCamera)
         right = self.pipeline.create(dai.node.MonoCamera)
-        #enc = self.pipeline.create(dai.node.VideoEncoder)
         self.stereo = self.pipeline.create(dai.node.StereoDepth)
 
         rgbOut = self.pipeline.create(dai.node.XLinkOut)
@@ -54,7 +53,6 @@ class OakDStereoCamera():
         camRgb.setResolution(dai.ColorCameraProperties.SensorResolution.THE_720_P)
         # for aligned?
         #camRgb.setIspScale(2, 3)
-        #
         camRgb.setFps(self.node.fps)
 
         try:
@@ -71,22 +69,14 @@ class OakDStereoCamera():
         right.setResolution(dai.MonoCameraProperties.SensorResolution.THE_720_P)
         right.setCamera("right")
         right.setFps(self.fps_depth)
-        
-        # enc.setDefaultProfilePreset(self.node.fps, dai.VideoEncoderProperties.Profile.MJPEG)
-        # enc.setLossless(False)
-        # enc.setQuality(30)
-        # enc.setNumFramesPool(2)
-        # enc.setFrameRate(self.node.fps)
 
         self.stereo.setDefaultProfilePreset(dai.node.StereoDepth.PresetMode.DEFAULT)
-        self.stereo.setLeftRightCheck(True)
-        #self.stereo.setExtendedDisparity(True)
+        # self.stereo.setLeftRightCheck(True)
         #self.stereo.setDepthAlign(rgbCamSocket)
 
         camRgb.isp.link(rgbOut.input)
         left.out.link(self.stereo.left)
         right.out.link(self.stereo.right)
-        #enc.bitstream.link(rgbOut.input)
         self.stereo.depth.link(depthOut.input)
 
         self.device.startPipeline(self.pipeline)
@@ -141,7 +131,7 @@ class OakDStereoCamera():
         return self.device.readCalibration().getDistortionCoefficients(dai.CameraBoardSocket.RGB)
 
     def publish_feeds(self, devrule=None):
-        self.node.get_logger().info("STARTING TO PUBLISH RGB")
+        self.node.get_logger().info("STARTING TO PUBLISH RGB!!")
         # encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 40]
         encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 25]
         previous_time = 0
@@ -158,6 +148,7 @@ class OakDStereoCamera():
                 if rgb_packet is not None:
                     # self.node.get_logger().info("--------------RGB NOT NONE --------------")
                     frameRgb = rgb_packet.getCvFrame()
+                    frameRgb = cv2.rotate(frameRgb, cv2.ROTATE_180) if self.flip_camera else frameRgb
                     success, encoded_image = cv2.imencode('.jpg', frameRgb, encode_param)
                     if not success:
                         self.node.get_logger().warn("Failed to compress RGB frame.")
@@ -166,7 +157,7 @@ class OakDStereoCamera():
                     compressed_msg = CompressedImage()
                     compressed_msg.header.stamp = self.node.get_clock().now().to_msg()
                     compressed_msg.format = "jpeg"
-                    compressed_msg.data = bytearray(encoded_image)
+                    compressed_msg.data = encoded_image.tobytes()
                     self.node.cam_pubs.publish(compressed_msg)
 
                 if depth_packet is not None:
@@ -186,18 +177,18 @@ class OakDStereoCamera():
 
                 if rgb_packet is not None and depth_packet is not None:
                     current_time = time.time()
-                    total_bytes = len(bytearray(encoded_image)) + len(depth_frame.tobytes())
+                    total_bytes = len(encoded_image.tobytes()) + len(depth_frame.tobytes())
+                    # total_bytes = len(encoded_image.tobytes())
                     bw = self.node.calculate_bandwidth(current_time, previous_time, total_bytes)
                     previous_time = current_time
                     self.node.cam_bw.publish(bw)
-                    
-                    # time.sleep(1 / self.node.fps)
 
             else:
                 rgb_queue = self.device.getOutputQueue("rgb")
                 rgb_packet = rgb_queue.tryGet()
                 if rgb_packet is not None:
                     frameRgb = rgb_packet.getCvFrame()
+                    frameRgb = cv2.rotate(frameRgb, cv2.ROTATE_180) if self.flip_camera else frameRgb
                     success, encoded_image = cv2.imencode('.jpg', frameRgb, encode_param)
                     if not success:
                         self.node.get_logger().warn("Failed to compress RGB frame.")
@@ -206,15 +197,13 @@ class OakDStereoCamera():
                     compressed_msg = CompressedImage()
                     compressed_msg.header.stamp = self.node.get_clock().now().to_msg()
                     compressed_msg.format = "jpeg"
-                    compressed_msg.data = bytearray(encoded_image)
+                    compressed_msg.data = encoded_image.tobytes()
                     self.node.cam_pubs.publish(compressed_msg)
                     
-                    current_time = time.time()
-                    bw = self.node.calculate_bandwidth(current_time, previous_time, len(compressed_msg.data))
-                    previous_time = current_time
-                    self.node.cam_bw.publish(bw)
-                    
-                    # time.sleep(1 / self.node.fps)
+                    # current_time = time.time()
+                    # bw = self.node.calculate_bandwidth(current_time, previous_time, len(compressed_msg.data))
+                    # previous_time = current_time
+                    # self.node.cam_bw.publish(bw)
 
 
 
