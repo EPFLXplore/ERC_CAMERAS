@@ -51,7 +51,6 @@ class OakDStereoCamera():
         rgbCamSocket = dai.CameraBoardSocket.CAM_A
         camRgb.setBoardSocket(rgbCamSocket)
         camRgb.setResolution(dai.ColorCameraProperties.SensorResolution.THE_720_P)
-        # for aligned?
         #camRgb.setIspScale(2, 3)
         camRgb.setFps(self.node.fps)
 
@@ -70,14 +69,17 @@ class OakDStereoCamera():
         right.setCamera("right")
         right.setFps(self.fps_depth)
 
-        self.stereo.setDefaultProfilePreset(dai.node.StereoDepth.PresetMode.DEFAULT)
-        # self.stereo.setLeftRightCheck(True)
-        #self.stereo.setDepthAlign(rgbCamSocket)
+        #self.stereo.setDefaultProfilePreset(dai.node.StereoDepth.PresetMode.DEFAULT)
+        self.stereo.setDefaultProfilePreset(dai.node.StereoDepth.PresetMode.HIGH_DENSITY)
+        #self.stereo.setExtendedDisparity(True)
+        #self.stereo.setLeftRightCheck(True)
+        self.stereo.setDepthAlign(rgbCamSocket)
 
         camRgb.isp.link(rgbOut.input)
         left.out.link(self.stereo.left)
         right.out.link(self.stereo.right)
         self.stereo.depth.link(depthOut.input)
+        self.stereo.setSubpixel(True)
 
         self.device.startPipeline(self.pipeline)
         self.queueEvents = []
@@ -89,6 +91,17 @@ class OakDStereoCamera():
         return response
 
     def camera_params_callback(self, request, response):
+        
+        calib = self.device.readCalibration()
+        intrinsics = calib.getCameraIntrinsics(dai.CameraBoardSocket.CAM_A, (1920, 1080))
+        response.depth_scale = 0.001
+        distortion_coefficients = self.get_coeffs()
+        response.fx = float(intrinsics[0][0])
+        response.fy = float(intrinsics[1][1])
+        response.cx = float(intrinsics[0][2])
+        response.cy = float(intrinsics[1][2])
+        response.distortion_coefficients = distortion_coefficients
+        '''
         intrinsics = self.get_intrinsics()
         distortion_coefficients = self.get_coeffs()
         response.depth_scale = 0.001
@@ -97,6 +110,7 @@ class OakDStereoCamera():
         response.cx = float(intrinsics[0][2])
         response.cy = float(intrinsics[1][2])
         response.distortion_coefficients = distortion_coefficients
+        '''
         return response
 
     def get_rgb(self):
@@ -125,7 +139,8 @@ class OakDStereoCamera():
 
     def get_intrinsics(self):
         calib_data = self.device.readCalibration()
-        return calib_data.getCameraIntrinsics(dai.CameraBoardSocket.RGB, 1280, 720)
+        # return calib_data.getCameraIntrinsics(dai.CameraBoardSocket.RGB, 1280, 720)
+        return calib_data.getCameraIntrinsics(dai.CameraBoardSocket.RGB, 1920, 1080)
 
     def get_coeffs(self):
         return self.device.readCalibration().getDistortionCoefficients(dai.CameraBoardSocket.RGB)
@@ -140,13 +155,11 @@ class OakDStereoCamera():
             if self.depth_mode:
                 rgb_queue = self.device.getOutputQueue("rgb")
                 depth_queue = self.device.getOutputQueue("depth")
-                # self.node.get_logger().info("DEPTH MODE IS ON")
 
                 rgb_packet = rgb_queue.tryGet()
                 depth_packet = depth_queue.tryGet()
 
                 if rgb_packet is not None:
-                    # self.node.get_logger().info("--------------RGB NOT NONE --------------")
                     frameRgb = rgb_packet.getCvFrame()
                     frameRgb = cv2.rotate(frameRgb, cv2.ROTATE_180) if self.flip_camera else frameRgb
                     success, encoded_image = cv2.imencode('.jpg', frameRgb, encode_param)
@@ -161,7 +174,6 @@ class OakDStereoCamera():
                     self.node.cam_pubs.publish(compressed_msg)
 
                 if depth_packet is not None:
-                    # self.node.get_logger().info("--------------DEPTH NOT NONE --------------")
                     depth_frame = depth_packet.getFrame()
                     depth_frame = np.ascontiguousarray(depth_frame)
 

@@ -32,7 +32,7 @@ def generate_launch_description():
             {'fps': 10},
             {'x': 1280},
             {'y': 720},
-            {'flip_camera':True},
+            {'flip_camera': False},
             {'fps_depth': 10}
         ],
     )
