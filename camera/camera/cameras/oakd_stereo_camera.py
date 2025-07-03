@@ -50,8 +50,7 @@ class OakDStereoCamera():
 
         rgbCamSocket = dai.CameraBoardSocket.CAM_A
         camRgb.setBoardSocket(rgbCamSocket)
-        camRgb.setResolution(dai.ColorCameraProperties.SensorResolution.THE_720_P)
-        #camRgb.setIspScale(2, 3)
+        camRgb.setResolution(dai.ColorCameraProperties.SensorResolution.THE_720_P)        
         camRgb.setFps(self.node.fps)
 
         try:
@@ -71,8 +70,6 @@ class OakDStereoCamera():
 
         #self.stereo.setDefaultProfilePreset(dai.node.StereoDepth.PresetMode.DEFAULT)
         self.stereo.setDefaultProfilePreset(dai.node.StereoDepth.PresetMode.HIGH_DENSITY)
-        #self.stereo.setExtendedDisparity(True)
-        #self.stereo.setLeftRightCheck(True)
         self.stereo.setDepthAlign(rgbCamSocket)
 
         camRgb.isp.link(rgbOut.input)
@@ -93,7 +90,7 @@ class OakDStereoCamera():
     def camera_params_callback(self, request, response):
         
         calib = self.device.readCalibration()
-        intrinsics = calib.getCameraIntrinsics(dai.CameraBoardSocket.CAM_A, (1920, 1080))
+        intrinsics = calib.getCameraIntrinsics(dai.CameraBoardSocket.CAM_B, (1920, 1080))
         response.depth_scale = 0.001
         distortion_coefficients = self.get_coeffs()
         response.fx = float(intrinsics[0][0])
