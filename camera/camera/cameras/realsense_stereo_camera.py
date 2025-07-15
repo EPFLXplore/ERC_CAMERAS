@@ -22,8 +22,8 @@ class RealSenseStereoCamera():
         # Service to retrieve the parameters of the camera
         self.camera_info_service = self.node.create_service(CameraParams, self.info + self.serial_number, self.camera_params_callback)
         self.profile = None
-        self.pipe = rs.pipeline()  # Create a RealSense pipeline object.
-        self.config = rs.config()  # Disable the depth stream, keep only the RGB stream
+        self.pipe = rs.pipeline()
+        self.config = rs.config()
 
         self.context = rs.context()
         self.devices = self.context.query_devices()
@@ -162,13 +162,22 @@ class RealSenseStereoCamera():
             frameset = self.pipe.poll_for_frames()
             color_frame = frameset.get_color_frame()
             if not color_frame:
-                raise RuntimeError("No color frame received")
+                #raise RuntimeError("No color frame received")
+                time.sleep(0.001)
             else:
                 color = np.asanyarray(color_frame.get_data())
             return color
         except RuntimeError as e:
             self.node.get_logger().error(f"Error getting RGB frame: {e}")
             return None
+
+    def get_baw(self):
+        frameset = self.pipe.poll_for_frames()
+        gray_frame = frameset.get_color_frame() #configured to Y8
+        if not gray_frame:
+            time.sleep(0.001)
+            return None
+        return np.asanyarray(gray_frame.get_data())
    
 
     def publish_feeds(self, camera_id):
@@ -211,20 +220,30 @@ class RealSenseStereoCamera():
         
         previous_time = 0
         compressed_image = None
+        prev_rgb_time = time.time()
+
         while not self.node.stopped:
-                
+            
+            rgb_time = time.time()
+
             if self.depth_mode == 0:
                 
-                frame = self.get_rgb()
-                if frame is not None:
-                    compressed_image = self.bridge.cv2_to_compressed_imgmsg(gray, dst_format="jpeg")
+                #frame = self.get_rgb()
+                frame = self.get_baw()
+                if frame is None:
+                    continue
 
+                if(rgb_time - prev_rgb_time >= 1/(self.node.fps)):
+                    compressed_image = self.bridge.cv2_to_compressed_imgmsg(frame, dst_format="jpeg")
                     self.node.cam_pubs.publish(compressed_image)
 
                     current_time = time.time()
                     bw = self.node.calculate_bandwidth(current_time, previous_time, len(compressed_image.data))
                     previous_time = current_time 
                     self.node.cam_bw.publish(bw)
+
+                    prev_rgb_time = time.time()
+
                 # else:
                 #     self.node.get_logger().error(f"AAAAAhhhhh")
 
@@ -253,6 +272,8 @@ class RealSenseStereoCamera():
                 bw = self.node.calculate_bandwidth(current_time, previous_time, len(compressed_image.data) + len(msg.data))
                 previous_time = current_time 
                 self.node.cam_bw.publish(bw)
+            
+            time.sleep(0.001)
         
         self.pipe.stop()
                 
