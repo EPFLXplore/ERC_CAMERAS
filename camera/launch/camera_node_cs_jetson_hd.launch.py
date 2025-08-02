@@ -24,7 +24,6 @@ def generate_launch_description():
             {'topic_pub': "/ROVER/feed_camera_cs_4"},
             {'bw_pub': "/ROVER/bw_camera_cs_4"}, 
             {'devrule': "/dev/video0"},
-            {'state': "/ROVER/state_camera_cs_4"},
             {'fps': 15},
             {'x': 640},
             {'y': 480}
@@ -42,7 +41,6 @@ def generate_launch_description():
             {'topic_pub': "/ROVER/feed_camera_cs_5"},
             {'bw_pub': "/ROVER/bw_camera_cs_5"},
             {'devrule': "/dev/video2"},
-            {'state': "/ROVER/state_camera_cs_5"},
             {'fps': 15},
             {'x': 640},
             {'y': 480}

@@ -28,7 +28,7 @@ def generate_launch_description():
             {'devrule': "218622278049"},  # serial number written on the back of the camera
             {'info': "/ROVER/camera_info_"}, # we concatenate the devrule
             {'depth_req': "/ROVER/depth_req_camera_hd_0"}, # To activate the depth
-            {'state': "/ROVER/state_camera_hd_0"},
+            {'state_depth': "/ROVER/state_depth_camera_hd_0"},
             {'fps': 10},
             {'x': 1280},
             {'y': 720},
