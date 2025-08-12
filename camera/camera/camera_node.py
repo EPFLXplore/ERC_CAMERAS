@@ -26,7 +26,6 @@ class CameraNode(Node):
         self.declare_parameter("topic_pub", self.default)
         self.declare_parameter("bw_pub", self.default)
         self.declare_parameter("devrule", self.default)
-        self.declare_parameter("state", self.default)
         self.declare_parameter("fps", 10)
         self.declare_parameter("x", 640)
         self.declare_parameter("y", 480)
@@ -35,7 +34,6 @@ class CameraNode(Node):
         self.publisher_topic = self.get_parameter("topic_pub").get_parameter_value().string_value
         self.publisher_topic_bw = self.get_parameter("bw_pub").get_parameter_value().string_value
         self.devrule = self.get_parameter("devrule").get_parameter_value().string_value
-        self.state_topic = self.get_parameter("state").get_parameter_value().string_value
         self.fps = self.get_parameter("fps").get_parameter_value().integer_value
         self.x = self.get_parameter("x").get_parameter_value().integer_value
         self.y = self.get_parameter("y").get_parameter_value().integer_value
@@ -51,7 +49,6 @@ class CameraNode(Node):
         # Initialize publishers before creating the camera instance
         self.cam_pubs = self.create_publisher(CompressedImage, self.publisher_topic, qos_profile=self.qos_profile, callback_group=self.callback_group)
         self.cam_bw = self.create_publisher(Float32, self.publisher_topic_bw, 1)
-        self.state = self.create_publisher(Bool, self.state_topic, 1)
 
          # object camera
         self.camera =  CameraFactory.create_camera(self)
@@ -80,26 +77,16 @@ class CameraNode(Node):
                 self.get_logger().info("before starting thread")
                 self.thread.start()
                 response.success = True
-                response.message = "Cameras started"
-                msg = Bool()
-                msg.data = True
-                self.state.publish(msg)
             else:
                 response.success = False
-                response.message = "Cameras are already running"
         else:
             # Stop the thread only if it has been started and is still running
             if hasattr(self, 'thread') and self.thread.is_alive():
                 self.stopped = True
                 self.thread.join()
                 response.success = True
-                response.message = "Cameras stopped"
-                msg = Bool()
-                msg.data = False
-                self.state.publish(msg)
             else:
                 response.success = False
-                response.message = "No camera thread to stop"
 
         return response
 

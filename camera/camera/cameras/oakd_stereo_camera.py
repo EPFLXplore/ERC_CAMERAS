@@ -8,6 +8,7 @@ from sensor_msgs.msg import CompressedImage
 from custom_msg.srv import CameraParams
 from std_srvs.srv import SetBool
 from sensor_msgs.msg import Image
+from std_msgs.msg import Float32, Bool
 
 rgbWeight = 0.4
 depthWeight = 0.6
@@ -35,6 +36,9 @@ class OakDStereoCamera():
         self.depth_request = self.node.get_parameter("depth_req").get_parameter_value().string_value
         self.node.declare_parameter("depth", self.node.default)
         self.depth_topic_string = self.node.get_parameter("depth").get_parameter_value().string_value
+        
+        self.node.declare_parameter("state_depth", "")
+        self.state_depth_topic = self.node.get_parameter("state_depth").get_parameter_value().string_value
         
         self.depth_change = self.node.create_service(SetBool, self.depth_request, self.depth_callback)
         self.depth_mode = False
@@ -112,12 +116,14 @@ class OakDStereoCamera():
         self.device.startPipeline(self.pipeline)
         self.queueEvents = []
         
+        self.state_depth = self.node.create_publisher(Bool, self.node.state_depth_topic, 1)
         self.depth_pubs = self.node.create_publisher(Image, self.depth_topic_string, qos_profile=self.node.qos_profile)
 
     # Depth mode: 0 => Off, 1 => On
     def depth_callback(self, request, response):
         self.depth_mode = request.data
         response.success = True
+        self.state_depth.publish(Bool(data=self.depth_mode))
         return response
 
     def camera_params_callback(self, request, response):
