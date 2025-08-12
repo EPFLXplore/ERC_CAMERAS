@@ -8,6 +8,7 @@ from sensor_msgs.msg import CompressedImage
 from custom_msg.srv import CameraParams
 from std_srvs.srv import SetBool
 from sensor_msgs.msg import Image
+from std_msgs.msg import Float32, Bool
 
 class OakDStereoCamera():
     def __init__(self, node):
@@ -26,11 +27,16 @@ class OakDStereoCamera():
 
         self.depth_change = self.node.create_service(SetBool, self.depth_request, self.depth_callback)
         self.depth_mode = False
+        
+        self.node.declare_parameter("state_depth", "")
+        self.state_depth_topic = self.node.get_parameter("state_depth").get_parameter_value().string_value
 
         self.node.declare_parameter("flip_camera", False)
         self.flip_camera = self.node.get_parameter("flip_camera").get_parameter_value().bool_value
 
         self.camera_info_service = self.node.create_service(CameraParams, self.info + self.serial_number, self.camera_params_callback)
+        
+        self.publish_gray = self.node.create_publisher(CompressedImage, "/ROVER/test_gray", qos_profile=self.node.qos_profile, callback_group=self.node.callback_group)
 
         self.pipeline = dai.Pipeline()
         self.device = dai.Device()
@@ -80,11 +86,14 @@ class OakDStereoCamera():
 
         self.device.startPipeline(self.pipeline)
         self.queueEvents = []
+        
+        self.state_depth = self.node.create_publisher(Bool, self.state_depth_topic, 1)
         self.depth_pubs = self.node.create_publisher(Image, self.depth_topic_string, qos_profile=self.node.qos_profile)
 
     def depth_callback(self, request, response):
         self.depth_mode = request.data
         response.success = True
+        self.state_depth.publish(Bool(data=self.depth_mode))
         return response
 
     def camera_params_callback(self, request, response):
@@ -209,10 +218,18 @@ class OakDStereoCamera():
                     compressed_msg.data = encoded_image.tobytes()
                     self.node.cam_pubs.publish(compressed_msg)
                     
-                    # current_time = time.time()
-                    # bw = self.node.calculate_bandwidth(current_time, previous_time, len(compressed_msg.data))
-                    # previous_time = current_time
-                    # self.node.cam_bw.publish(bw)
+                    current_time = time.time()
+                    bw = self.node.calculate_bandwidth(current_time, previous_time, len(compressed_msg.data))
+                    previous_time = current_time
+                    self.node.cam_bw.publish(bw)
+                    
+                    # gray = cv2.cvtColor(frameRgb, cv2.COLOR_BGR2GRAY)
+                    # compressed_msg = CompressedImage()
+                    # compressed_msg.header.stamp = self.node.get_clock().now().to_msg()
+                    # compressed_msg.format = "jpeg"
+                    # compressed_msg.data = gray.tobytes()
+                    # self.publish_gray.publish(compressed_msg)
+                    
 
 
 
