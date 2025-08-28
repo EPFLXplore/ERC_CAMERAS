@@ -31,6 +31,7 @@ def generate_launch_description():
             {'devrule': ""},
             {'info': "/NAV/camera_info_"}, # we concatenate the devrule
             {'state': "/NAV/state_camera_nav_0"},
+            {'screenshot': '/NAV/screenshot_camera_nav_0'},
             {'fps': 15},
             {'x': 1280},
             {'y': 720},
