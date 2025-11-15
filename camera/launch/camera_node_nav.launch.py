@@ -79,10 +79,31 @@ def generate_launch_description():
         ],
     )
 
+    nav_test_camera = Node(
+        package='camera',
+        executable='camera',
+        name='camera_nav_test',
+        namespace='/NAV',
+        parameters=[
+            {'camera_type': "oak1w_stereo"},
+            {'topic_service': "/NAV/req_camera_nav_3"},
+            {'topic_pub': "/NAV/feed_camera_nav_3"},
+            {'depth': "/NAV/depth_camera_nav_3"},
+            {'bw_pub': "/NAV/bw_camera_nav_3"},
+            {'depth_req': "/NAV/depth_req_camera_nav_3"},
+            {'devrule': "19443010714B177E00"}, # To get with print("Found Oak1W Stereo Camera : ", dai.Device.getAllAvailableDevices()) under the name : "deviceId"
+            {'info': "/NAV/camera_info_"}, # we concatenate the devrule
+            {'state': "/NAV/state_camera_nav_3"},
+            {'screenshot': '/NAV/screenshot_camera_nav_3'},
+            {'fps': 30},
+            {'x': 1280},
+            {'y': 720},
+            {'flip_camera':False}
+        ],
+    )
+
     return LaunchDescription(
         [
-            nav_realsense_aruco_camera_left,
-            nav_realsense_aruco_camera_right,
-            nav_front_camera,
+            nav_test_camera,
         ]
     )
