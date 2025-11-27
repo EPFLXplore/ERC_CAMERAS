@@ -19,6 +19,8 @@ class OakDStereoCamera():
         self.depth_request = self.node.get_parameter("depth_req").get_parameter_value().string_value
         self.node.declare_parameter("depth", self.node.default)
         self.depth_topic_string = self.node.get_parameter("depth").get_parameter_value().string_value
+        self.node.declare_parameter("depth_avg", self.node.default)
+        self.depth_avg_topic_string = self.node.get_parameter("depth_avg").get_parameter_value().string_value
         self.node.declare_parameter("fps_depth", 5)
         self.fps_depth = self.node.get_parameter("fps_depth").get_parameter_value().integer_value
 
@@ -33,12 +35,9 @@ class OakDStereoCamera():
 
         self.camera_info_service = self.node.create_service(CameraParams, self.info + self.serial_number, self.camera_params_callback)
         
-        self.publish_gray = self.node.create_publisher(CompressedImage, "/ROVER/test_gray", qos_profile=self.node.qos_profile, callback_group=self.node.callback_group)
-
 
         #------------------- Device and pipeline init -------------------
         self.pipeline = dai.Pipeline()
-        self.device = dai.Device()
         self.queueNames = []
 
         #Sources and Outputs
@@ -61,22 +60,15 @@ class OakDStereoCamera():
         #For Nav it should be the other way around
         subpixel = False
         extended_disparity = True
+        IRdot = 0 #Only useful indoors and if Oak-D pro is used
         ### -----------------------------------
-
+        
         
         #Properties
         ## RGB Camera
         camRgb.setBoardSocket(rgbCamSocket)
         camRgb.setResolution(dai.ColorCameraProperties.SensorResolution.THE_720_P) #To change depending on needs (max, 12_MP = 4056x3040)
         camRgb.setFps(self.node.fps)
-
-        try:
-            calibData = self.device.readCalibration2()
-            lensPosition = calibData.getLensPosition(rgbCamSocket)
-            if lensPosition:
-                camRgb.initialControl.setManualFocus(lensPosition)
-        except:
-            raise
 
         ## Mono Cameras
         left.setResolution(monoResolution)
@@ -104,15 +96,30 @@ class OakDStereoCamera():
         self.stereo.depth.link(depthOut.input)
 
         #------------------- Start pipeline -------------------
-        self.device.startPipeline(self.pipeline)
+        self.device = dai.Device(self.pipeline, maxUsbSpeed=dai.UsbSpeed.SUPER_PLUS)  #10Gbps USB3.2 gen2
         self.queueEvents = []
         try:
-            self.device.setIrLaserDotProjectorIntensity(0) #Only useful indoors and if Oak-D pro is used
+            calibData = self.device.readCalibration2()
+            lensPosition = calibData.getLensPosition(rgbCamSocket)
+            if lensPosition:
+                camRgb.initialControl.setManualFocus(lensPosition)
+        except:
+            raise
+
+        try:
+            self.device.setIrLaserDotProjectorIntensity(IRdot) 
         except:
             self.node.get_logger().warn("No laser projector found on device.")
         
         self.state_depth = self.node.create_publisher(Bool, self.state_depth_topic, 1)
         self.depth_pubs = self.node.create_publisher(Image, self.depth_topic_string, qos_profile=self.node.qos_profile)
+        self.depth_avg_pubs = self.node.create_publisher(Image, self.depth_avg_topic_string, qos_profile=self.node.qos_profile)
+
+        self.rgb_queue = self.device.getOutputQueue(name="rgb", maxSize=4, blocking=False)
+        self.depth_queue = self.device.getOutputQueue(name="depth", maxSize=4, blocking=False)
+
+        self.alpha = 0.2 #for depth filtering (EMA filter)
+        self.depth_frame = None
         #------------------- End init -------------------
 
     def depth_callback(self, request, response):
@@ -124,7 +131,7 @@ class OakDStereoCamera():
     def camera_params_callback(self, request, response):
         
         calib = self.device.readCalibration()
-        intrinsics = calib.getCameraIntrinsics(dai.CameraBoardSocket.CAM_B, (1920, 1080)) #Resolution is for perception nodes
+        intrinsics = calib.getCameraIntrinsics(dai.CameraBoardSocket.RGB, (640, 480)) # Resolution to change back to (1920, 1080) for perception nodes 
         response.depth_scale = 0.001
         distortion_coefficients = calib.getDistortionCoefficients(dai.CameraBoardSocket.RGB)
         response.fx = float(intrinsics[0][0])
@@ -135,66 +142,72 @@ class OakDStereoCamera():
 
         return response
 
+    def pubslish_rgb(self):
+        encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 25]
+        
+        rgb_packet = self.rgb_queue.tryGet()
+        # Create and publish RGB compressed image
+        if rgb_packet is not None:
+            frameRgb = rgb_packet.getCvFrame()
+            frameRgb = cv2.rotate(frameRgb, cv2.ROTATE_180) if self.flip_camera else frameRgb
+            success, encoded_image = cv2.imencode('.jpg', frameRgb, encode_param)
+            if not success:
+                self.node.get_logger().warn("Failed to compress RGB frame.")
+                return 0, False
+
+            compressed_msg = CompressedImage()
+            compressed_msg.header.stamp = self.node.get_clock().now().to_msg()
+            compressed_msg.format = "jpeg"
+            compressed_msg.data = encoded_image.tobytes()
+            self.node.cam_pubs.publish(compressed_msg)
+            return len(encoded_image.tobytes()), True
+        return 0, False
+    
+    def publish_image(self, frame):
+        msg = Image()
+        msg.header.stamp = self.node.get_clock().now().to_msg()
+        msg.height = frame.shape[0]
+        msg.width = frame.shape[1]
+        msg.encoding = "16UC1"
+        msg.is_bigendian = False
+        msg.step = msg.width * 2
+        msg.data = frame.tobytes()
+        return msg
+
+    def publish_depths(self):
+        depth_packet = self.depth_queue.tryGet()                
+                
+        if depth_packet is not None:
+            depth_frame = depth_packet.getFrame()
+
+            depth_frame = np.ascontiguousarray(depth_frame)
+            #msg_depth = self.publish_image(depth_frame)
+            #self.depth_pubs.publish(msg_depth)
+
+            if self.depth_frame is not None:
+               self.depth_frame = (self.alpha * depth_frame + (1 - self.alpha) * self.depth_frame).astype(np.uint16)
+                
+            else:
+                 self.depth_frame = depth_frame
+
+            msg_depth_avg = self.publish_image(self.depth_frame)
+            self.depth_avg_pubs.publish(msg_depth_avg)
+            
+
     def publish_feeds(self, devrule=None):
         self.node.get_logger().info("STARTING TO PUBLISH RGB!!")
-        # encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 40]
-        encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 25]
+        
         previous_time = 0
 
         while not self.node.stopped:
-            rgb_queue = self.device.getOutputQueue(name="rgb", maxSize=4, blocking=False)
-            rgb_packet = rgb_queue.tryGet()
-
-            # Create and publish RGB compressed image
-            if rgb_packet is not None:
-                    frameRgb = rgb_packet.getCvFrame()
-                    frameRgb = cv2.rotate(frameRgb, cv2.ROTATE_180) if self.flip_camera else frameRgb
-                    success, encoded_image = cv2.imencode('.jpg', frameRgb, encode_param)
-                    if not success:
-                        self.node.get_logger().warn("Failed to compress RGB frame.")
-                        continue
-                    compressed_msg = CompressedImage()
-                    compressed_msg.header.stamp = self.node.get_clock().now().to_msg()
-                    compressed_msg.format = "jpeg"
-                    compressed_msg.data = encoded_image.tobytes()
-                    self.node.cam_pubs.publish(compressed_msg)
+            bytes_rgb, rgb_packet_state = self.pubslish_rgb()
         
              # Create and publish Depth encoded image
             if self.depth_mode:      
-                depth_queue = self.device.getOutputQueue(name="depth", maxSize=4, blocking=False)
-                depth_packet = depth_queue.tryGet()                
-                
-                if depth_packet is not None:
-                    depth_frame = depth_packet.getFrame()
-                    depth_frame = np.ascontiguousarray(depth_frame)
+                self.publish_depths()
 
-                    msg = Image()
-                    msg.header.stamp = self.node.get_clock().now().to_msg()
-                    msg.height = depth_frame.shape[0]
-                    msg.width = depth_frame.shape[1]
-                    msg.encoding = "16UC1"
-                    msg.is_bigendian = False
-                    msg.step = msg.width * 2
-                    msg.data = depth_frame.tobytes()
-                    self.depth_pubs.publish(msg)
-
-            if rgb_packet is not None:
+            if rgb_packet_state:
                 current_time = time.time()
-                if self.depth_mode and depth_packet is not None:
-                    total_bytes = len(encoded_image.tobytes()) + len(depth_frame.tobytes())
-                    # total_bytes = len(encoded_image.tobytes())
-                else :
-                    total_bytes = len(encoded_image.tobytes())
-               
-                bw = self.node.calculate_bandwidth(current_time, previous_time, total_bytes)
+                bw = self.node.calculate_bandwidth(current_time, previous_time, bytes_rgb)
                 previous_time = current_time
                 self.node.cam_bw.publish(bw)
-
-
-                    # gray = cv2.cvtColor(frameRgb, cv2.COLOR_BGR2GRAY)
-                    # compressed_msg = CompressedImage()
-                    # compressed_msg.header.stamp = self.node.get_clock().now().to_msg()
-                    # compressed_msg.format = "jpeg"
-                    # compressed_msg.data = gray.tobytes()
-                    # self.publish_gray.publish(compressed_msg)
-               
