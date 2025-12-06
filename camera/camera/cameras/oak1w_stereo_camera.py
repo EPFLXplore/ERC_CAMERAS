@@ -188,6 +188,15 @@ class Oak1WStereoCamera():
                 self.frameRgb = latestPacket["rgb"].getCvFrame()
                 
             if self.frameRgb is not None:
+                # Publish raw image to visualize and debug
+                try:
+                    raw_msg = self.bridge.cv2_to_imgmsg(self.frameRgb, encoding="bgr8")
+                    raw_msg.header.stamp = self.node.get_clock().now().to_msg()
+                    raw_msg.header.frame_id = "camera"
+                    self.node.cam_raw_pubs.publish(raw_msg)
+                except Exception as e:
+                    self.node.get_logger().error(f"Failed to publish raw image: {e}")
+                
                                     
                 ### -- NOT NAV TASK NEW STUFF FROM 13TH AUGUST TO LIMIT THE DATA RATE OF THE CAMERA -- ###
                 # if self.scale < 0.999:

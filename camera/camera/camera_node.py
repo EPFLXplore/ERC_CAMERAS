@@ -2,7 +2,7 @@ import rclpy
 from rclpy.node import Node
 from std_srvs.srv import SetBool
 from .camera_factory import CameraFactory
-from sensor_msgs.msg import CompressedImage
+from sensor_msgs.msg import CompressedImage, Image
 import threading
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy, QoSDurabilityPolicy
@@ -50,6 +50,7 @@ class CameraNode(Node):
 
         # Initialize publishers before creating the camera instance
         self.cam_pubs = self.create_publisher(CompressedImage, self.publisher_topic, qos_profile=self.qos_profile, callback_group=self.callback_group)
+        self.cam_raw_pubs = self.create_publisher(Image,self.publisher_topic + "_raw",qos_profile=self.qos_profile, callback_group=self.callback_group)
         self.cam_bw = self.create_publisher(Float32, self.publisher_topic_bw, 1)
         self.state = self.create_publisher(Bool, self.state_topic, 1)
 

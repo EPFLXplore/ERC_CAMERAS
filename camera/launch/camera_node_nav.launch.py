@@ -91,7 +91,7 @@ def generate_launch_description():
             {'depth': "/NAV/depth_camera_nav_3"},
             {'bw_pub': "/NAV/bw_camera_nav_3"},
             {'depth_req': "/NAV/depth_req_camera_nav_3"},
-            {'devrule': "19443010714B177E00"}, # To get with print("Found Oak1W Stereo Camera : ", dai.Device.getAllAvailableDevices()) under the name : "deviceId"
+            {'devrule': "19443010714B177E00"}, # To get under the name : "deviceId" : import depthai as dai \ print("Found Oak1W Stereo Camera : ", dai.Device.getAllAvailableDevices()) 
             {'info': "/NAV/camera_info_"}, # we concatenate the devrule
             {'state': "/NAV/state_camera_nav_3"},
             {'screenshot': '/NAV/screenshot_camera_nav_3'},
@@ -101,7 +101,6 @@ def generate_launch_description():
             {'flip_camera':False}
         ],
     )
-
     return LaunchDescription(
         [
             nav_test_camera,
