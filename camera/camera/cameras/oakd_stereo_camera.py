@@ -60,7 +60,7 @@ class OakDStereoCamera():
         #For Nav it should be the other way around
         subpixel = False
         extended_disparity = True
-        IRdot = 0 #Only useful indoors and if Oak-D pro is used
+        IRdot = 0 #Only useful indoors and if Oak-D pro is used (between 0 and 1)
         ### -----------------------------------
         
         
@@ -82,10 +82,15 @@ class OakDStereoCamera():
         self.stereo.setDefaultProfilePreset(dai.node.StereoDepth.PresetMode.HIGH_DENSITY)
         
         self.stereo.setDepthAlign(rgbCamSocket) #Align depth to RGB camera
-        self.stereo.setOutputSize(640, 480) #Prevents automatique rescaling to RGB size 
+        if monoResolution == dai.MonoCameraProperties.SensorResolution.THE_480_P:
+            self.stereo.setOutputSize(640, 480) #Prevents automatique rescaling to RGB size : NEEDS to match the resolution of the mono cameras
+        elif monoResolution == dai.MonoCameraProperties.SensorResolution.THE_400_P:
+            self.stereo.setOutputSize(640, 400)
+        else :
+              self.node.get_logger().error("Resolution doesn't match predefined output size")
 
         self.stereo.setRectification(True)
-        self.stereo.setLeftRightCheck(True) #removed incorrectly calculated dispariy pixels due to occlusions at object borders
+        self.stereo.setLeftRightCheck(True) #removed incorrectly calculated disparfiy pixels due to occlusions at object borders
         self.stereo.setExtendedDisparity(extended_disparity) #allow detecting closer distance objects (halves min distance)
         self.stereo.setSubpixel(subpixel) #better precision for longer distances (but incompatible with extended disparity)
 
@@ -97,6 +102,7 @@ class OakDStereoCamera():
 
         #------------------- Start pipeline -------------------
         self.device = dai.Device(self.pipeline, maxUsbSpeed=dai.UsbSpeed.SUPER_PLUS)  #10Gbps USB3.2 gen2
+        self.imu = self.pipeline.create(dai.node.IMU)
         self.queueEvents = []
         try:
             calibData = self.device.readCalibration2()
@@ -131,7 +137,7 @@ class OakDStereoCamera():
     def camera_params_callback(self, request, response):
         
         calib = self.device.readCalibration()
-        intrinsics = calib.getCameraIntrinsics(dai.CameraBoardSocket.RGB, (640, 480)) # Resolution to change back to (1920, 1080) for perception nodes 
+        intrinsics = calib.getCameraIntrinsics(dai.CameraBoardSocket.RGB, (1920, 1080))
         response.depth_scale = 0.001
         distortion_coefficients = calib.getDistortionCoefficients(dai.CameraBoardSocket.RGB)
         response.fx = float(intrinsics[0][0])
@@ -139,6 +145,7 @@ class OakDStereoCamera():
         response.cx = float(intrinsics[0][2])
         response.cy = float(intrinsics[1][2])
         response.distortion_coefficients = distortion_coefficients
+    
 
         return response
 
