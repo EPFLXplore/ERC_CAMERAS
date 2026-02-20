@@ -30,11 +30,11 @@ def generate_launch_description():
             {'info': "/ROVER/camera_info_"}, # we concatenate the devrule
             {'depth_req': "/ROVER/depth_req_camera_hd_0"}, # To activate the depth
             {'state_depth': "/ROVER/state_depth_camera_hd_0"},
-            {'fps': 10},
+            {'fps': 15},
             {'x': 1280},
             {'y': 720},
             {'flip_camera': False},
-            {'fps_depth': 10}
+            {'fps_depth': 15}
         ],
     )
     return LaunchDescription(
