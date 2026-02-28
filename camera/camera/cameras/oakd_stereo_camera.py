@@ -69,7 +69,6 @@ class OakDStereoCamera:
 
         # ------------------- Device and pipeline init -------------------
         self.pipeline = dai.Pipeline()
-        self.queueNames = []
 
         # Sources and Outputs
         self.camRgb = self.pipeline.create(dai.node.ColorCamera)
@@ -82,7 +81,6 @@ class OakDStereoCamera:
 
         rgbOut.setStreamName("rgb")
         depthOut.setStreamName("depth")
-        self.queueNames.extend(["rgb", "depth"])
 
         # Camera parameters
         self.rgbCamSocket = dai.CameraBoardSocket.CAM_A
@@ -95,12 +93,12 @@ class OakDStereoCamera:
         # -----------------------------------
 
         # Properties
-        # RGB Camera
+        ## RGB Camera
         self.camRgb.setBoardSocket(self.rgbCamSocket)
         self.camRgb.setResolution(dai.ColorCameraProperties.SensorResolution.THE_720_P)
         self.camRgb.setFps(self.node.fps)
 
-        # Mono Cameras
+        ## Mono Cameras
         left.setResolution(monoResolution)
         left.setCamera("left")
         left.setFps(self.fps_depth)
@@ -109,12 +107,12 @@ class OakDStereoCamera:
         right.setCamera("right")
         right.setFps(self.fps_depth)
 
-        # Stereo Properties
+        ## Stereo Properties
         self.stereo.setDefaultProfilePreset(
             dai.node.StereoDepth.PresetMode.HIGH_DENSITY
         )
-        self.stereo.setDepthAlign(self.rgbCamSocket)
 
+        self.stereo.setDepthAlign(self.rgbCamSocket)
         if monoResolution == dai.MonoCameraProperties.SensorResolution.THE_480_P:
             self.stereo.setOutputSize(640, 480)
         elif monoResolution == dai.MonoCameraProperties.SensorResolution.THE_400_P:
@@ -129,49 +127,78 @@ class OakDStereoCamera:
         self.stereo.setExtendedDisparity(extended_disparity)
         self.stereo.setSubpixel(subpixel)
 
-        # Linking
+        # linking
         self.camRgb.isp.link(rgbOut.input)
         left.out.link(self.stereo.left)
         right.out.link(self.stereo.right)
         self.stereo.depth.link(depthOut.input)
 
         # ------------------- Runtime state -------------------
-        # IMPORTANT: Do NOT open dai.Device() here. Open/close per start/stop.
         self.device = None
         self.rgb_queue = None
         self.depth_queue = None
         self._dev_lock = threading.Lock()
 
-        self.alpha = 0.2  # for depth filtering (EMA filter)
+        self.alpha = 0.2
         self.depth_frame = None
 
+        # reconnect backoff
+        self._reconnect_delay_s = 0.3
+
     def _open_device(self):
-        # Create device and queues (called when streaming starts)
-        self.device = dai.Device(self.pipeline, maxUsbSpeed=dai.UsbSpeed.SUPER_PLUS)
+        """
+        Open device + queues.
+        IMPORTANT: stop forcing SUPER_PLUS; many systems will drop link after a few seconds.
+        We'll prefer SUPER and only try SUPER_PLUS second (optional).
+        """
+        last_err = None
 
-        # Apply focus (if available) + IR dot projector intensity
-        try:
-            calibData = self.device.readCalibration2()
-            lensPosition = calibData.getLensPosition(self.rgbCamSocket)
-            if lensPosition:
-                self.camRgb.initialControl.setManualFocus(lensPosition)
-        except Exception as e:
-            self.node.get_logger().warn(f"Calibration/focus init failed: {e}")
+        # Prefer SUPER (USB3) for stability; try SUPER_PLUS as a second attempt.
+        for speed in (dai.UsbSpeed.SUPER, dai.UsbSpeed.SUPER_PLUS):
+            try:
+                dev = dai.Device(self.pipeline, maxUsbSpeed=speed)
 
-        try:
-            self.device.setIrLaserDotProjectorIntensity(self.IRdot)
-        except Exception:
-            self.node.get_logger().warn("No laser projector found on device.")
+                # Keep queues small to avoid backlog/latency and reduce host pressure
+                self.rgb_queue = dev.getOutputQueue(
+                    name="rgb", maxSize=1, blocking=False
+                )
+                self.depth_queue = dev.getOutputQueue(
+                    name="depth", maxSize=1, blocking=False
+                )
 
-        self.rgb_queue = self.device.getOutputQueue(
-            name="rgb", maxSize=4, blocking=False
+                # IR dot projector (best effort)
+                try:
+                    dev.setIrLaserDotProjectorIntensity(self.IRdot)
+                except Exception:
+                    self.node.get_logger().warn("No laser projector found on device.")
+
+                self.device = dev
+                self.node.get_logger().info(
+                    f"DepthAI device opened with USB speed request: {speed}"
+                )
+                return
+
+            except Exception as e:
+                last_err = e
+                try:
+                    dev.close()
+                except Exception:
+                    pass
+
+        raise RuntimeError(
+            f"Failed to open DepthAI device / start pipeline: {last_err}"
         )
-        self.depth_queue = self.device.getOutputQueue(
-            name="depth", maxSize=4, blocking=False
-        )
+
+    def _reconnect(self, reason: str):
+        # Close and reopen with a small delay
+        self.node.get_logger().warn(f"DepthAI reconnecting ({reason}) ...")
+        self.close()
+        time.sleep(self._reconnect_delay_s)
+        with self._dev_lock:
+            if self.device is None:
+                self._open_device()
 
     def close(self):
-        # Deterministic release to avoid "device already in use"
         with self._dev_lock:
             try:
                 if self.device is not None:
@@ -184,7 +211,6 @@ class OakDStereoCamera:
                 self.depth_queue = None
                 self.depth_frame = None
 
-    # Alias for node-side stop calls (optional, but convenient)
     def stop(self):
         self.close()
 
@@ -195,10 +221,8 @@ class OakDStereoCamera:
         return response
 
     def camera_params_callback(self, request, response):
-        # Guard against being called while stopped
         with self._dev_lock:
             if self.device is None:
-                # If you prefer, you can open temporarily, but minimum change: just return defaults.
                 return response
 
             calib = self.device.readCalibration()
@@ -222,13 +246,21 @@ class OakDStereoCamera:
             return 0, False
 
         encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 25]
-        rgb_packet = self.rgb_queue.tryGet()
+
+        try:
+            rgb_packet = self.rgb_queue.tryGet()
+        except RuntimeError as e:
+            # X_LINK_ERROR etc.
+            self.node.get_logger().error(f"DepthAI RGB stream error: {e}")
+            self._reconnect("rgb stream error")
+            return 0, False
 
         if rgb_packet is not None:
             frameRgb = rgb_packet.getCvFrame()
             frameRgb = (
                 cv2.rotate(frameRgb, cv2.ROTATE_180) if self.flip_camera else frameRgb
             )
+
             success, encoded_image = cv2.imencode(".jpg", frameRgb, encode_param)
             if not success:
                 self.node.get_logger().warn("Failed to compress RGB frame.")
@@ -258,10 +290,15 @@ class OakDStereoCamera:
         if self.depth_queue is None:
             return
 
-        depth_packet = self.depth_queue.tryGet()
+        try:
+            depth_packet = self.depth_queue.tryGet()
+        except RuntimeError as e:
+            self.node.get_logger().error(f"DepthAI depth stream error: {e}")
+            self._reconnect("depth stream error")
+            return
+
         if depth_packet is not None:
-            depth_frame = depth_packet.getFrame()
-            depth_frame = np.ascontiguousarray(depth_frame)
+            depth_frame = np.ascontiguousarray(depth_packet.getFrame())
 
             if self.depth_frame is not None:
                 self.depth_frame = (
@@ -277,8 +314,9 @@ class OakDStereoCamera:
         self.node.get_logger().info("STARTING TO PUBLISH RGB!!")
 
         previous_time = 0
+        period_s = 1.0 / max(1, int(self.node.fps))
+        next_tick = time.time()
 
-        # Open device at start of streaming
         with self._dev_lock:
             if self.device is None:
                 self._open_device()
@@ -287,9 +325,14 @@ class OakDStereoCamera:
             while not self.node.stopped and (
                 stop_event is None or not stop_event.is_set()
             ):
+                # Throttle loop to requested FPS (prevents busy-spin and reduces USB/CPU pressure)
+                now = time.time()
+                if now < next_tick:
+                    time.sleep(next_tick - now)
+                next_tick = max(next_tick + period_s, time.time())
+
                 bytes_rgb, rgb_packet_state = self.pubslish_rgb()
 
-                # Create and publish Depth encoded image
                 if self.depth_mode:
                     self.publish_depths()
 
@@ -301,5 +344,4 @@ class OakDStereoCamera:
                     previous_time = current_time
                     self.node.cam_bw.publish(bw)
         finally:
-            # Always release the device so next start doesn't say "already in use"
             self.close()
