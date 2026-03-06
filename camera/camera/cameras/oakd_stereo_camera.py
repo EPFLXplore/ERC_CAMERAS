@@ -124,7 +124,8 @@ class OakDStereoCamera():
         self.rgb_queue = self.device.getOutputQueue(name="rgb", maxSize=4, blocking=False)
         self.depth_queue = self.device.getOutputQueue(name="depth", maxSize=4, blocking=False)
 
-        self.alpha = 0.2 #for depth filtering (EMA filter)
+        self.alpha = 0.3#for depth filtering (EMA filter) around 6 frames averaged
+        self.decay = 0.1 # to account for 0 values (EMA filter)
         self.depth_frame = None
         #------------------- End init -------------------
 
@@ -132,6 +133,8 @@ class OakDStereoCamera():
         self.depth_mode = request.data
         response.success = True
         self.state_depth.publish(Bool(data=self.depth_mode))
+        if self.depth_mode:
+            self.node.get_logger().info(f"Starting to publish depth:")
         return response
 
     def camera_params_callback(self, request, response):
@@ -191,8 +194,12 @@ class OakDStereoCamera():
             #msg_depth = self.publish_image(depth_frame)
             #self.depth_pubs.publish(msg_depth)
 
-            if self.depth_frame is not None:
-               self.depth_frame = (self.alpha * depth_frame + (1 - self.alpha) * self.depth_frame).astype(np.uint16)
+            if self.depth_frame is not None: #
+               self.depth_frame = np.where(
+                                    depth_frame != 0, 
+                                    (self.alpha * depth_frame + (1 - self.alpha) * self.depth_frame), 
+                                     (self.decay * depth_frame + (1 - self.decay) * self.depth_frame) #takes 0 vakues into account to prevent h
+                                    ).astype(np.uint16)
                 
             else:
                  self.depth_frame = depth_frame
