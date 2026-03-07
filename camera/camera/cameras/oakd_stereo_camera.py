@@ -53,21 +53,25 @@ class OakDStereoCamera():
         depthOut.setStreamName("depth")
         self.queueNames.extend(["rgb", "depth"])
 
-        #Camera parameters
+        ## ---------- Camera parameters ----------
         rgbCamSocket = dai.CameraBoardSocket.CAM_A
         monoResolution = dai.MonoCameraProperties.SensorResolution.THE_480_P
+        rgbResolution = dai.ColorCameraProperties.SensorResolution.THE_1080_P
+        self.alpha = 0.3 #for depth filtering (EMA filter) around 6 frames averaged
+        self.decay = 0.1 # to account for 0 values (EMA filter)
         ### ------------ For HDS --------------
         #For Nav it should be the other way around
         subpixel = False
-        extended_disparity = True
+        extended_disparity = not subpixel #incompatible with subpixel, better for close objects but worse for long range (over 3m)
         IRdot = 0 #Only useful indoors and if Oak-D pro is used (between 0 and 1)
         ### -----------------------------------
+        ## ---------- End parameters ----------
         
         
         #Properties
         ## RGB Camera
         camRgb.setBoardSocket(rgbCamSocket)
-        camRgb.setResolution(dai.ColorCameraProperties.SensorResolution.THE_720_P) #To change depending on needs (max, 12_MP = 4056x3040)
+        camRgb.setResolution(rgbResolution) #To change depending on needs (max, 12_MP = 4056x3040)
         camRgb.setFps(self.node.fps)
 
         ## Mono Cameras
@@ -124,8 +128,7 @@ class OakDStereoCamera():
         self.rgb_queue = self.device.getOutputQueue(name="rgb", maxSize=4, blocking=False)
         self.depth_queue = self.device.getOutputQueue(name="depth", maxSize=4, blocking=False)
 
-        self.alpha = 0.3#for depth filtering (EMA filter) around 6 frames averaged
-        self.decay = 0.1 # to account for 0 values (EMA filter)
+        
         self.depth_frame = None
         #------------------- End init -------------------
 
