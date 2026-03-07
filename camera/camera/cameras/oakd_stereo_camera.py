@@ -215,6 +215,7 @@ class OakDStereoCamera:
         self.close()
 
     def depth_callback(self, request, response):
+        self.node.get_logger().info("publishing depth.")
         self.depth_mode = request.data
         response.success = True
         self.state_depth.publish(Bool(data=self.depth_mode))
@@ -233,11 +234,14 @@ class OakDStereoCamera:
             distortion_coefficients = calib.getDistortionCoefficients(
                 dai.CameraBoardSocket.RGB
             )
-            response.fx = float(intrinsics[0][0])
-            response.fy = float(intrinsics[1][1])
-            response.cx = float(intrinsics[0][2])
-            response.cy = float(intrinsics[1][2])
-            response.distortion_coefficients = distortion_coefficients
+            # default factory setting for calibrations of OAK-D pro not calibrated by hand 640/480 full baka
+            sx = 1920/640
+            sy = 1080/480
+            response.fx = 516.3*sx #float(intrinsics[0][0])
+            response.fy = 688.1*sy #float(intrinsics[1][1])
+            response.cx = 318.8*sx #float(intrinsics[0][2])
+            response.cy = 243.8*sy #float(intrinsics[1][2])
+            response.distortion_coefficients = [1.23231707e+01, -1.15954918e+02, 7.17240968e-04, 1.20075652e-04, 4.35855652e+02, 1.20713158e+01, -1.14148094e+02, 4.28597443e+02, 0.00000000e+00, 0.00000000e+00, 0.00000000e+00, 0.00000000e+00, 1.37381395e-03, -5.79341940e-05]
 
         return response
 

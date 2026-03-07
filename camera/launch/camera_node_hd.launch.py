@@ -3,6 +3,7 @@ from launch import LaunchDescription
 from launch_ros.actions import Node
 import os
 from ament_index_python import get_package_share_directory
+import yaml
 
 
 def get_package_file(package, file_path):
@@ -13,7 +14,8 @@ def get_package_file(package, file_path):
 
 
 def generate_launch_description():
-
+    with open('/home/xplore/dev_ws/src/custom_msg/config/rover_interface_names.yaml', 'r') as file:
+        rover_names = yaml.safe_load(file)["/**"]["ros__parameters"]
     camera_hd_gripper = Node(
         package='camera',
         executable='camera',
@@ -22,18 +24,18 @@ def generate_launch_description():
         parameters=[
             {'camera_type': "oakd_stereo"},
             {'topic_service': "/ROVER/req_camera_hd_0"},
-            {'topic_pub': "/ROVER/feed_camera_hd_0"},
+            {'topic_pub': rover_names['rover_hd_rgb_feed']}, # we concatenate the devrule"},
             {'depth': "/ROVER/depth_camera_hd_0"},
-            {'depth_avg' : "/ROVER/depth_avg_camera_hd_0"},
-            {'bw_pub': "/HD/bw_camera_hd_0"}, 
-            {'devrule': ""},  # serial number written on the back of the camera
-            {'info': "/ROVER/camera_info_"}, # we concatenate the devrule
+            {'depth_avg' : rover_names['rover_hd_depth_avg']},
+            {'bw_pub': "/HD/bw_camera_hd_0"},
+            {'devrule': ""}, # serial number written on the back of the camera
+            {'info': rover_names['rover_hd_camera_info']}, # we concatenate the devrule
             {'depth_req': "/ROVER/depth_req_camera_hd_0"}, # To activate the depth
             {'state_depth': "/ROVER/state_depth_camera_hd_0"},
-            {'fps': 15},
-            {'x': 1280},
-            {'y': 720},
-            {'flip_camera': False},
+            {'fps': 30},
+            {'x': 1920},
+            {'y': 1080},
+            {'flip_camera': True},
             {'fps_depth': 15}
         ],
     )
