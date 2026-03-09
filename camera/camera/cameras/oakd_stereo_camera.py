@@ -67,20 +67,40 @@ class OakDStereoCamera:
             Image, self.depth_avg_topic_string, qos_profile=self.node.qos_profile
         )
 
+        # CHANGED: raw uncompressed publisher for internal consumers (SLAM, detection, etc.)
+        self.node.declare_parameter("rgb_raw", self.node.default)
+        self.rgb_raw_topic_string = (
+            self.node.get_parameter("rgb_raw").get_parameter_value().string_value
+        )
+        self.rgb_raw_pubs = self.node.create_publisher(
+            Image, self.rgb_raw_topic_string, qos_profile=self.node.qos_profile
+        )
+
         # ------------------- Device and pipeline init -------------------
         self.pipeline = dai.Pipeline()
 
-        # Sources and Outputs
+        # Sources
         self.camRgb = self.pipeline.create(dai.node.ColorCamera)
         left = self.pipeline.create(dai.node.MonoCamera)
         right = self.pipeline.create(dai.node.MonoCamera)
         self.stereo = self.pipeline.create(dai.node.StereoDepth)
 
-        rgbOut = self.pipeline.create(dai.node.XLinkOut)
+        # Outputs
+        rgbRawOut = self.pipeline.create(dai.node.XLinkOut)   # CHANGED: raw for internal
+        rgbEncOut = self.pipeline.create(dai.node.XLinkOut)   # CHANGED: HW-encoded for CS
         depthOut = self.pipeline.create(dai.node.XLinkOut)
 
-        rgbOut.setStreamName("rgb")
+        rgbRawOut.setStreamName("rgb_raw")   # CHANGED
+        rgbEncOut.setStreamName("rgb_enc")   # CHANGED
         depthOut.setStreamName("depth")
+
+        # CHANGED: on-device MJPEG encoder - zero CPU cost on host
+        self.encoder = self.pipeline.create(dai.node.VideoEncoder)
+        self.encoder.setDefaultProfilePreset(
+            self.node.fps,
+            dai.VideoEncoderProperties.Profile.MJPEG
+        )
+        self.encoder.setQuality(25)  # same quality as the old cv2.imencode JPEG q=25
 
         # Camera parameters
         self.rgbCamSocket = dai.CameraBoardSocket.CAM_A
@@ -89,16 +109,16 @@ class OakDStereoCamera:
         # ------------ For HDS --------------
         subpixel = False
         extended_disparity = True
-        self.IRdot = 0  # Only useful indoors and if Oak-D pro is used (between 0 and 1)
+        self.IRdot = 0
         # -----------------------------------
 
         # Properties
-        ## RGB Camera
+        ## RGB Camera - CHANGED: bump to max resolution for internal feed
         self.camRgb.setBoardSocket(self.rgbCamSocket)
-        self.camRgb.setResolution(dai.ColorCameraProperties.SensorResolution.THE_720_P)
-        self.camRgb.setFps(self.node.fps)
+        self.camRgb.setResolution(dai.ColorCameraProperties.SensorResolution.THE_1080_P)
+        self.camRgb.setFps(self.node.fps)  # max fps, camera will run at full speed
 
-        ## Mono Cameras
+        ## Mono Cameras (unchanged)
         left.setResolution(monoResolution)
         left.setCamera("left")
         left.setFps(self.fps_depth)
@@ -107,11 +127,10 @@ class OakDStereoCamera:
         right.setCamera("right")
         right.setFps(self.fps_depth)
 
-        ## Stereo Properties
+        ## Stereo Properties (unchanged)
         self.stereo.setDefaultProfilePreset(
             dai.node.StereoDepth.PresetMode.HIGH_DENSITY
         )
-
         self.stereo.setDepthAlign(self.rgbCamSocket)
         if monoResolution == dai.MonoCameraProperties.SensorResolution.THE_480_P:
             self.stereo.setOutputSize(640, 480)
@@ -127,46 +146,44 @@ class OakDStereoCamera:
         self.stereo.setExtendedDisparity(extended_disparity)
         self.stereo.setSubpixel(subpixel)
 
-        # linking
-        self.camRgb.isp.link(rgbOut.input)
+        # CHANGED: linking - isp goes to raw queue AND to encoder
+        self.camRgb.isp.link(rgbRawOut.input)          # raw full-res frames → internal
+        self.camRgb.video.link(self.encoder.input)      # video port → HW encoder → CS
+        self.encoder.bitstream.link(rgbEncOut.input)
         left.out.link(self.stereo.left)
         right.out.link(self.stereo.right)
         self.stereo.depth.link(depthOut.input)
 
         # ------------------- Runtime state -------------------
         self.device = None
-        self.rgb_queue = None
+        self.rgb_raw_queue = None   # CHANGED: was rgb_queue
+        self.rgb_enc_queue = None   # CHANGED: new
         self.depth_queue = None
         self._dev_lock = threading.Lock()
 
         self.alpha = 0.2
         self.depth_frame = None
 
-        # reconnect backoff
         self._reconnect_delay_s = 0.3
 
     def _open_device(self):
-        """
-        Open device + queues.
-        IMPORTANT: stop forcing SUPER_PLUS; many systems will drop link after a few seconds.
-        We'll prefer SUPER and only try SUPER_PLUS second (optional).
-        """
         last_err = None
 
-        # Prefer SUPER (USB3) for stability; try SUPER_PLUS as a second attempt.
         for speed in (dai.UsbSpeed.SUPER, dai.UsbSpeed.SUPER_PLUS):
             try:
                 dev = dai.Device(self.pipeline, maxUsbSpeed=speed)
 
-                # Keep queues small to avoid backlog/latency and reduce host pressure
-                self.rgb_queue = dev.getOutputQueue(
-                    name="rgb", maxSize=1, blocking=False
+                # CHANGED: two rgb queues instead of one
+                self.rgb_raw_queue = dev.getOutputQueue(
+                    name="rgb_raw", maxSize=1, blocking=False
+                )
+                self.rgb_enc_queue = dev.getOutputQueue(
+                    name="rgb_enc", maxSize=1, blocking=False
                 )
                 self.depth_queue = dev.getOutputQueue(
                     name="depth", maxSize=1, blocking=False
                 )
 
-                # IR dot projector (best effort)
                 try:
                     dev.setIrLaserDotProjectorIntensity(self.IRdot)
                 except Exception:
@@ -190,7 +207,6 @@ class OakDStereoCamera:
         )
 
     def _reconnect(self, reason: str):
-        # Close and reopen with a small delay
         self.node.get_logger().warn(f"DepthAI reconnecting ({reason}) ...")
         self.close()
         time.sleep(self._reconnect_delay_s)
@@ -207,7 +223,8 @@ class OakDStereoCamera:
                 self.node.get_logger().warn(f"DepthAI close() failed: {e}")
             finally:
                 self.device = None
-                self.rgb_queue = None
+                self.rgb_raw_queue = None   # CHANGED
+                self.rgb_enc_queue = None   # CHANGED
                 self.depth_queue = None
                 self.depth_frame = None
 
@@ -234,46 +251,74 @@ class OakDStereoCamera:
             distortion_coefficients = calib.getDistortionCoefficients(
                 dai.CameraBoardSocket.RGB
             )
-            # default factory setting for calibrations of OAK-D pro not calibrated by hand 640/480 full baka
             sx = 1920/640
             sy = 1080/480
-            response.fx = 516.3*sx #float(intrinsics[0][0])
-            response.fy = 688.1*sy #float(intrinsics[1][1])
-            response.cx = 318.8*sx #float(intrinsics[0][2])
-            response.cy = 243.8*sy #float(intrinsics[1][2])
+            response.fx = 516.3*sx
+            response.fy = 688.1*sy
+            response.cx = 318.8*sx
+            response.cy = 243.8*sy
             response.distortion_coefficients = [1.23231707e+01, -1.15954918e+02, 7.17240968e-04, 1.20075652e-04, 4.35855652e+02, 1.20713158e+01, -1.14148094e+02, 4.28597443e+02, 0.00000000e+00, 0.00000000e+00, 0.00000000e+00, 0.00000000e+00, 1.37381395e-03, -5.79341940e-05]
 
         return response
 
-    def pubslish_rgb(self):
-        if self.rgb_queue is None:
-            return 0, False
+    # CHANGED: was pubslish_rgb() (typo), now split into two methods
 
-        encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 25]
+    def publish_rgb_internal(self):
+        """
+        Raw uncompressed BGR frames for internal consumers (SLAM, detection, etc.).
+        Full resolution, full fps. No encoding on host CPU.
+        """
+        if self.rgb_raw_queue is None:
+            return False
 
         try:
-            rgb_packet = self.rgb_queue.tryGet()
+            pkt = self.rgb_raw_queue.tryGet()
         except RuntimeError as e:
-            # X_LINK_ERROR etc.
-            self.node.get_logger().error(f"DepthAI RGB stream error: {e}")
-            self._reconnect("rgb stream error")
+            self.node.get_logger().error(f"DepthAI rgb_raw stream error: {e}")
+            self._reconnect("rgb_raw stream error")
+            return False
+
+        if pkt is not None:
+            frame = pkt.getCvFrame()
+            if self.flip_camera:
+                frame = cv2.rotate(frame, cv2.ROTATE_180)
+
+            msg = Image()
+            msg.header.stamp = self.node.get_clock().now().to_msg()
+            msg.height = frame.shape[0]
+            msg.width = frame.shape[1]
+            msg.encoding = "bgr8"
+            msg.is_bigendian = False
+            msg.step = frame.shape[1] * 3
+            msg.data = frame.tobytes()
+            self.rgb_raw_pubs.publish(msg)
+            return True
+
+        return False
+
+    def publish_rgb_external(self):
+        """
+        HW-compressed MJPEG for external/CS consumers.
+        Already JPEG bytes off the device - zero CPU encoding cost.
+        FPS does not matter here, CS doesn't need high fps.
+        """
+        if self.rgb_enc_queue is None:
             return 0, False
 
-        if rgb_packet is not None:
-            frameRgb = rgb_packet.getCvFrame()
-            frameRgb = (
-                cv2.rotate(frameRgb, cv2.ROTATE_180) if self.flip_camera else frameRgb
-            )
+        try:
+            pkt = self.rgb_enc_queue.tryGet()
+        except RuntimeError as e:
+            self.node.get_logger().error(f"DepthAI rgb_enc stream error: {e}")
+            self._reconnect("rgb_enc stream error")
+            return 0, False
 
-            success, encoded_image = cv2.imencode(".jpg", frameRgb, encode_param)
-            if not success:
-                self.node.get_logger().warn("Failed to compress RGB frame.")
-                return 0, False
+        if pkt is not None:
+            data = pkt.getData()  # already JPEG bytes, no cv2.imencode needed
 
             compressed_msg = CompressedImage()
             compressed_msg.header.stamp = self.node.get_clock().now().to_msg()
             compressed_msg.format = "jpeg"
-            compressed_msg.data = encoded_image.tobytes()
+            compressed_msg.data = data.tobytes()
             self.node.cam_pubs.publish(compressed_msg)
             return len(compressed_msg.data), True
 
@@ -329,18 +374,19 @@ class OakDStereoCamera:
             while not self.node.stopped and (
                 stop_event is None or not stop_event.is_set()
             ):
-                # Throttle loop to requested FPS (prevents busy-spin and reduces USB/CPU pressure)
                 now = time.time()
                 if now < next_tick:
                     time.sleep(next_tick - now)
                 next_tick = max(next_tick + period_s, time.time())
 
-                bytes_rgb, rgb_packet_state = self.pubslish_rgb()
+                # CHANGED: call both publishers independently
+                self.publish_rgb_internal()
+                bytes_rgb, rgb_ok = self.publish_rgb_external()
 
                 if self.depth_mode:
                     self.publish_depths()
 
-                if rgb_packet_state:
+                if rgb_ok:
                     current_time = time.time()
                     bw = self.node.calculate_bandwidth(
                         current_time, previous_time, bytes_rgb
