@@ -143,7 +143,7 @@ class OakDStereoCamera:
         self.depth_frame = None
 
         # reconnect backoff
-        self._reconnect_delay_s = 0.3
+        self._reconnect_delay_s = 1.0
 
     def _open_device(self):
         """
@@ -154,7 +154,7 @@ class OakDStereoCamera:
         last_err = None
 
         # Prefer SUPER (USB3) for stability; try SUPER_PLUS as a second attempt.
-        for speed in (dai.UsbSpeed.SUPER, dai.UsbSpeed.SUPER_PLUS):
+        for speed in (dai.UsbSpeed.SUPER, dai.UsbSpeed.SUPER_PLUS, dai.UsbSpeed.HIGH):
             try:
                 dev = dai.Device(self.pipeline, maxUsbSpeed=speed)
 
