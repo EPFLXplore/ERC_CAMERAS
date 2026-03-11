@@ -192,10 +192,10 @@ class OakDStereoCamera():
                 
         if depth_packet is not None:
             depth_frame = depth_packet.getFrame()
-
+            depth_frame = cv2.rotate(depth_frame, cv2.ROTATE_180) if self.flip_camera else depth_frame
             depth_frame = np.ascontiguousarray(depth_frame)
             #msg_depth = self.publish_image(depth_frame)
-            #self.depth_pubs.publish(msg_depth)
+            #self.depth_pubs.publish(msg_depth)s
 
             if self.depth_frame is not None: #
                self.depth_frame = np.where(
