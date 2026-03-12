@@ -27,6 +27,7 @@ def generate_launch_description():
             {'camera_type': "oakd_stereo"},
             {'topic_service': "/ROVER/req_camera_hd_0"},
             {'topic_pub': rover_names['rover_hd_rgb_feed']}, # we concatenate the devrule"},
+            {'topic_pub': rover_names['rover_hd_rgb_feed']}, # we concatenate the devrule"},
             {'depth': "/ROVER/depth_camera_hd_0"},
             {'depth_avg' : rover_names['rover_hd_depth_avg']},
             {'bw_pub': "/HD/bw_camera_hd_0"}, 
@@ -34,9 +35,9 @@ def generate_launch_description():
             {'info': rover_names['rover_hd_camera_info']}, # we concatenate the devrule
             {'depth_req': "/ROVER/depth_req_camera_hd_0"}, # To activate the depth
             {'state_depth': "/ROVER/state_depth_camera_hd_0"},
-            {'fps': 15},
-            {'x': 1280},
-            {'y': 720},
+            {'fps': 30},
+            {'x': 1920},
+            {'y': 1080},
             {'flip_camera': False},
             {'fps_depth': 15},  
             {'number_of_frames_to_average': 5}
