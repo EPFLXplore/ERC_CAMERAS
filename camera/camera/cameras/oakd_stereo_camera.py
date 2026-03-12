@@ -93,7 +93,7 @@ class OakDStereoCamera:
         #For Nav it should be the other way around
         subpixel = False
         extended_disparity = not subpixel #incompatible with subpixel, better for close objects but worse for long range (over 3m)
-        IRdot = 0 #Only useful indoors and if Oak-D pro is used (between 0 and 1)
+        self.IRdot = 0 #Only useful indoors and if Oak-D pro is used (between 0 and 1)
         ### -----------------------------------
         ## ---------- End parameters ----------
         
@@ -103,6 +103,7 @@ class OakDStereoCamera:
         self.camRgb.setBoardSocket(self.rgbCamSocket)
         self.camRgb.setResolution(rgbResolution)
         self.camRgb.setFps(self.node.fps)
+        self.node.get_logger().info(f"RGB camera set to {rgbResolution} at {self.node.fps} FPS")
 
         ## Mono Cameras
         left.setResolution(monoResolution)
@@ -242,10 +243,9 @@ class OakDStereoCamera:
                 dai.CameraBoardSocket.RGB
             )
 
-
             if (intrinsics[0][0] or intrinsics[1][1] or intrinsics[0][2] or intrinsics[1][2]) == 0.0:
                 self.node.get_logger().warn("Camera intrinsics not found, using default values.")
-                # default factory setting for calibrations of OAK-D pro not calibrated by hand 640/480 full baka
+                # default factory setting for calibrations of OAK-D pro not calibrated by hand for 640/480 full baka
                 sx = 1920/640
                 sy = 1080/480
                 response.fx = 516.3*sx #float(intrinsics[0][0])
