@@ -2,6 +2,7 @@ import depthai as dai
 import cv2
 import time
 import numpy as np
+from collections import deque
 from std_msgs.msg import Float32
 from sensor_msgs.msg import CompressedImage, Image
 from custom_msg.srv import CameraParams
@@ -23,7 +24,8 @@ class OakDStereoCamera():
         self.depth_avg_topic_string = self.node.get_parameter("depth_avg").get_parameter_value().string_value
         self.node.declare_parameter("fps_depth", 5)
         self.fps_depth = self.node.get_parameter("fps_depth").get_parameter_value().integer_value
-
+        self.node.declare_parameter("number_of_frames_to_average", 1)
+        self.number_of_frames_to_average = self.node.get_parameter("number_of_frames_to_average").get_parameter_value().integer_value
         self.depth_change = self.node.create_service(SetBool, self.depth_request, self.depth_callback)
         self.depth_mode = False
         
@@ -57,8 +59,7 @@ class OakDStereoCamera():
         rgbCamSocket = dai.CameraBoardSocket.CAM_A
         monoResolution = dai.MonoCameraProperties.SensorResolution.THE_480_P
         rgbResolution = dai.ColorCameraProperties.SensorResolution.THE_1080_P
-        self.alpha = 0.3 #for depth filtering (EMA filter) around 6 frames averaged
-        self.decay = 0.1 # to account for 0 values (EMA filter)
+        self.previous_frames : deque[np.ndarray] = deque(maxlen=self.number_of_frames_to_average)
         ### ------------ For HDS --------------
         #For Nav it should be the other way around
         subpixel = False
@@ -197,15 +198,8 @@ class OakDStereoCamera():
             #msg_depth = self.publish_image(depth_frame)
             #self.depth_pubs.publish(msg_depth)s
 
-            if self.depth_frame is not None: #
-               self.depth_frame = np.where(
-                                    depth_frame != 0, 
-                                    (self.alpha * depth_frame + (1 - self.alpha) * self.depth_frame), 
-                                     (self.decay * depth_frame + (1 - self.decay) * self.depth_frame) #takes 0 vakues into account to prevent h
-                                    ).astype(np.uint16)
-                
-            else:
-                 self.depth_frame = depth_frame
+            self.previous_frames.append(depth_frame)
+            self.depth_frame = np.mean(self.previous_frames, axis=0).astype(np.uint16)
 
             msg_depth_avg = self.publish_image(self.depth_frame)
             self.depth_avg_pubs.publish(msg_depth_avg)

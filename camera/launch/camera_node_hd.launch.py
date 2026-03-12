@@ -38,7 +38,8 @@ def generate_launch_description():
             {'x': 1280},
             {'y': 720},
             {'flip_camera': False},
-            {'fps_depth': 15}
+            {'fps_depth': 15},  
+            {'number_of_frames_to_average': 5}
         ],
     )
     return LaunchDescription(
