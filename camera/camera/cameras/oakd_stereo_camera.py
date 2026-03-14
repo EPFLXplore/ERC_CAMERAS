@@ -230,37 +230,37 @@ class OakDStereoCamera:
         return response
 
     def camera_params_callback(self, request, response):
-        with self._dev_lock:
+        if self.device is None:
+            self._open_device() # Try to open the device to solve a timing issue
             if self.device is None:
+                self.node.get_logger().error("Failed to get camera parameters: device not connected.")
                 return response
 
-            calib = self.device.readCalibration()
-            intrinsics = calib.getCameraIntrinsics(
-                dai.CameraBoardSocket.RGB, (1920, 1080)
-            )
-            response.depth_scale = 0.001
-            distortion_coefficients = calib.getDistortionCoefficients(
-                dai.CameraBoardSocket.RGB
-            )
+        calib = self.device.readCalibration()
+        intrinsics = calib.getCameraIntrinsics(
+            dai.CameraBoardSocket.RGB, (1920, 1080)
+        )
+        response.depth_scale = 0.001
+        distortion_coefficients = calib.getDistortionCoefficients(
+            dai.CameraBoardSocket.RGB
+        )
 
-            if (intrinsics[0][0] or intrinsics[1][1] or intrinsics[0][2] or intrinsics[1][2]) == 0.0:
-                self.node.get_logger().warn("Camera intrinsics not found, using default values.")
-                # default factory setting for calibrations of OAK-D pro not calibrated by hand for 640/480 full baka
-                sx = 1920/640
-                sy = 1080/480
-                response.fx = 516.3*sx #float(intrinsics[0][0])
-                response.fy = 688.1*sy #float(intrinsics[1][1])
-                response.cx = 318.8*sx #float(intrinsics[0][2])
-                response.cy = 243.8*sy #float(intrinsics[1][2])
-                response.distortion_coefficients = [1.23231707e+01, -1.15954918e+02, 7.17240968e-04, 1.20075652e-04, 4.35855652e+02, 1.20713158e+01, -1.14148094e+02, 4.28597443e+02, 0.00000000e+00, 0.00000000e+00, 0.00000000e+00, 0.00000000e+00, 1.37381395e-03, -5.79341940e-05]
-            else:
-                self.node.get_logger().info("Camera intrinsics found, using them.")
-                response.fx = float(intrinsics[0][0])
-                response.fy = float(intrinsics[1][1])
-                response.cx = float(intrinsics[0][2])
-                response.cy = float(intrinsics[1][2])
-                response.distortion_coefficients = distortion_coefficients
-            
+        if (intrinsics[0][0] == 0 or intrinsics[1][1] == 0 or intrinsics[0][2] == 0 or intrinsics[1][2] == 0):
+            self.node.get_logger().warn("Camera intrinsics not found, using default values.")
+            # default factory setting for calibrations of OAK-D pro not calibrated by hand for 640/480 full baka
+            response.fx = 1516.3 #float(intrinsics[0][0])
+            response.fy = 1516.4 #float(intrinsics[1][1])
+            response.cx = 949.3 #float(intrinsics[0][2])
+            response.cy = 564.4 #float(intrinsics[1][2])
+            response.distortion_coefficients = [1.23231707e+01, -1.15954918e+02, 7.17240968e-04, 1.20075652e-04, 4.35855652e+02, 1.20713158e+01, -1.14148094e+02, 4.28597443e+02, 0.00000000e+00, 0.00000000e+00, 0.00000000e+00, 0.00000000e+00, 1.37381395e-03, -5.79341940e-05]
+        else:
+            self.node.get_logger().info("Camera intrinsics found, using them.")
+            response.fx = float(intrinsics[0][0])
+            response.fy = float(intrinsics[1][1])
+            response.cx = float(intrinsics[0][2])
+            response.cy = float(intrinsics[1][2])
+            response.distortion_coefficients = distortion_coefficients
+
         return response
 
     def pubslish_rgb(self):
