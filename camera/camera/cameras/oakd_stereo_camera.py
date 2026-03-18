@@ -87,7 +87,7 @@ class OakDStereoCamera:
         ## ---------- Camera parameters ----------
         self.rgbCamSocket = dai.CameraBoardSocket.CAM_A
         monoResolution = dai.MonoCameraProperties.SensorResolution.THE_480_P
-        rgbResolution = dai.ColorCameraProperties.SensorResolution.THE_1080_P
+        rgbResolution = dai.ColorCameraProperties.SensorResolution.THE_4_K #don't forget to update the resolution of intrasics
         self.previous_frames : deque[np.ndarray] = deque(maxlen=self.number_of_frames_to_average)
         ### ------------ For HDS --------------
         #For Nav it should be the other way around
@@ -221,7 +221,6 @@ class OakDStereoCamera:
         self.close()
 
     def depth_callback(self, request, response):
-        self.node.get_logger().info("publishing depth.")
         self.depth_mode = request.data
         response.success = True
         self.state_depth.publish(Bool(data=self.depth_mode))
@@ -238,7 +237,7 @@ class OakDStereoCamera:
 
         calib = self.device.readCalibration()
         intrinsics = calib.getCameraIntrinsics(
-            dai.CameraBoardSocket.RGB, (1920, 1080)
+            dai.CameraBoardSocket.RGB, (3840, 2160)
         )
         response.depth_scale = 0.001
         distortion_coefficients = calib.getDistortionCoefficients(
