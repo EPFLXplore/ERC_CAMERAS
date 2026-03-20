@@ -287,11 +287,11 @@ class OakDStereoCamera:
 
         if (intrinsics[0][0] == 0 or intrinsics[1][1] == 0 or intrinsics[0][2] == 0 or intrinsics[1][2] == 0):
             self.node.get_logger().warn("Camera intrinsics not found, using default values.")
-            # default factory setting for calibrations of OAK-D pro not calibrated by hand for 640/480 full baka
-            response.fx = 1516.3 #float(intrinsics[0][0])
-            response.fy = 1516.4 #float(intrinsics[1][1])
-            response.cx = 949.3 #float(intrinsics[0][2])
-            response.cy = 564.4 #float(intrinsics[1][2])
+            # default factory setting for calibrations of OAK-D pro not calibrated by hand for 1920/1080 full baka scaled with resolution
+            response.fx = 1516.3 * self.rgb_res[0]/1920#float(intrinsics[0][0])
+            response.fy = 1516.4 * self.rgb_res[1]/1080#float(intrinsics[1][1])
+            response.cx = 949.3 * self.rgb_res[0]/1920#float(intrinsics[0][2])
+            response.cy = 564.4 * self.rgb_res[1]/1080#float(intrinsics[1][2])
             response.distortion_coefficients = [1.23231707e+01, -1.15954918e+02, 7.17240968e-04, 1.20075652e-04, 4.35855652e+02, 1.20713158e+01, -1.14148094e+02, 4.28597443e+02, 0.00000000e+00, 0.00000000e+00, 0.00000000e+00, 0.00000000e+00, 1.37381395e-03, -5.79341940e-05]
         else:
             self.node.get_logger().info("Camera intrinsics found, using them.")
@@ -365,10 +365,12 @@ class OakDStereoCamera:
             depth_frame = cv2.rotate(depth_frame, cv2.ROTATE_180) if self.flip_camera else depth_frame
             depth_frame = np.ascontiguousarray(depth_frame)
             #msg_depth = self.publish_image(depth_frame)
-            #self.depth_pubs.publish(msg_depth)s
+            #self.depth_pubs.publish(msg_depth)
 
             self.previous_frames.append(depth_frame)
-            self.depth_frame = np.mean(self.previous_frames, axis=0).astype(np.uint16)
+            self.depth_frame = np.ascontiguousarray(
+                np.mean(self.previous_frames, axis=0).round().astype(np.uint16)
+            )
 
             msg_depth_avg = self.publish_image(self.depth_frame)
             self.depth_avg_pubs.publish(msg_depth_avg)
