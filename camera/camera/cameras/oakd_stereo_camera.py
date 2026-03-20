@@ -97,7 +97,33 @@ class OakDStereoCamera:
         ### -----------------------------------
         ## ---------- End parameters ----------
         
+        self.rgb_res = None
+        self.depth_res = None
+
+        RESOLUTION_MAP = {
+            dai.MonoCameraProperties.SensorResolution.THE_400_P: (640, 400),
+            dai.MonoCameraProperties.SensorResolution.THE_480_P: (640, 480),
+            dai.ColorCameraProperties.SensorResolution.THE_1080_P: (1920, 1080),
+            dai.ColorCameraProperties.SensorResolution.THE_4_K: (3840, 2160),
+            dai.ColorCameraProperties.SensorResolution.THE_12_MP: (4056, 3040),
+            dai.ColorCameraProperties.SensorResolution.THE_13_MP: (4208, 3120),
+        }
+        #affect the resolution size to rgb_res and depth_res
+        if rgbResolution in RESOLUTION_MAP:
+            self.rgb_res = RESOLUTION_MAP[rgbResolution]
+        else:
+            self.node.get_logger().error(
+                "RGB Resolution not in the map"
+            )
         
+        if monoResolution in RESOLUTION_MAP:
+            self.depth_res = RESOLUTION_MAP[monoResolution]
+        else:
+            self.node.get_logger().error(
+                "RGB Resolution not in the map"
+            )
+
+
         #Properties
         ## RGB Camera
         self.camRgb.setBoardSocket(self.rgbCamSocket)
@@ -120,10 +146,11 @@ class OakDStereoCamera:
         )
 
         self.stereo.setDepthAlign(self.rgbCamSocket)
-        if monoResolution == dai.MonoCameraProperties.SensorResolution.THE_480_P:
-            self.stereo.setOutputSize(640, 480)
-        elif monoResolution == dai.MonoCameraProperties.SensorResolution.THE_400_P:
-            self.stereo.setOutputSize(640, 400)
+        if self.depth_res is not None:
+            self.stereo.setOutputSize(
+                self.depth_res[0], 
+                self.depth_res[1]
+            )
         else:
             self.node.get_logger().error(
                 "Resolution doesn't match predefined output size"
@@ -236,9 +263,23 @@ class OakDStereoCamera:
                 return response
 
         calib = self.device.readCalibration()
-        intrinsics = calib.getCameraIntrinsics(
-            dai.CameraBoardSocket.RGB, (3840, 2160)
-        )
+        if self.rgb_res is not None:
+            intrinsics = calib.getCameraIntrinsics(
+            dai.CameraBoardSocket.RGB, (self.rgb_res[0], self.rgb_res[1])
+            )
+
+            response.rgb_w = self.rgb_res[0]
+            response.rgb_h = self.rgb_res[1]
+        else:
+            self.node.get_logger().error("Failed to get intrasics, resolution not in map or not set")
+        
+        
+        if self.depth_res is not None:
+            response.depth_w = self.depth_res[0]
+            response.depth_h = self.depth_res[1]
+        else:
+            self.node.get_logger().error("Depth resolution not in map or not set")
+        
         response.depth_scale = 0.001
         distortion_coefficients = calib.getDistortionCoefficients(
             dai.CameraBoardSocket.RGB
@@ -254,6 +295,7 @@ class OakDStereoCamera:
             response.distortion_coefficients = [1.23231707e+01, -1.15954918e+02, 7.17240968e-04, 1.20075652e-04, 4.35855652e+02, 1.20713158e+01, -1.14148094e+02, 4.28597443e+02, 0.00000000e+00, 0.00000000e+00, 0.00000000e+00, 0.00000000e+00, 1.37381395e-03, -5.79341940e-05]
         else:
             self.node.get_logger().info("Camera intrinsics found, using them.")
+            self.node.get_logger().info(f"fx ={intrinsics[0][0]}, fy ={intrinsics[1][1]}, cx ={intrinsics[0][2]}, cy ={intrinsics[1][2]}")
             response.fx = float(intrinsics[0][0])
             response.fy = float(intrinsics[1][1])
             response.cx = float(intrinsics[0][2])
