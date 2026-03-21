@@ -5,6 +5,7 @@ from launch import LaunchDescription
 from launch_ros.actions import Node
 import os
 from ament_index_python import get_package_share_directory
+from launch.actions import TimerAction
 
 
 def get_package_file(package, file_path):
@@ -102,8 +103,8 @@ def generate_launch_description():
         ],
     )
 
-    return LaunchDescription(
-        [
-            nav_test_camera,
-        ]
-    )
+    return LaunchDescription([
+        nav_front_camera,
+        TimerAction(period=2.0, actions=[nav_realsense_aruco_camera_left]),
+        TimerAction(period=4.0, actions=[nav_realsense_aruco_camera_right]),
+    ])
