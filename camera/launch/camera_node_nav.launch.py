@@ -33,7 +33,7 @@ def generate_launch_description():
             {'info': "/NAV/camera_info_"}, # we concatenate the devrule
             {'state': "/NAV/state_camera_nav_0"},
             {'screenshot': '/NAV/screenshot_camera_nav_0'},
-            {'fps': 15},
+            {'fps': 5},
             {'x': 1280},
             {'y': 720},
             {'flip_camera':False}
@@ -54,7 +54,7 @@ def generate_launch_description():
             {'info': "/NAV/camera_info_"}, # we concatenate the devrule
             {'depth_req': "/NAV/depth_req_camera_nav_1"},
             {'state': "/NAV/state_camera_nav_1"},
-            {'fps': 15},
+            {'fps': 6},
             {'x': 1280},
             {'y': 720}
         ],
@@ -74,7 +74,7 @@ def generate_launch_description():
             {'info': "/NAV/camera_info_"}, # we concatenate the devrule
             {'depth_req': "/NAV/depth_req_camera_nav_2"},
             {'state': "/NAV/state_camera_nav_2"},
-            {'fps': 15},
+            {'fps': 6},
             {'x': 1280},
             {'y': 720}
         ],

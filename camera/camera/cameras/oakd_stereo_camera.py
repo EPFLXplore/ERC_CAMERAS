@@ -45,7 +45,6 @@ class OakDStereoCamera():
         # ----------------RGB-------------------
         # Define sources and output
         camRgb = self.pipeline.create(dai.node.ColorCamera)
-        #enc = self.pipeline.create(dai.node.VideoEncoder) # FOR NAV TASK
         rgbOut = self.pipeline.create(dai.node.XLinkOut)
         monoLeft = self.pipeline.create(dai.node.MonoCamera)
         monoRight = self.pipeline.create(dai.node.MonoCamera)
@@ -90,21 +89,16 @@ class OakDStereoCamera():
         # RGB Properties
         rgbCamSocket = dai.CameraBoardSocket.CAM_A
         camRgb.setBoardSocket(rgbCamSocket)
-        camRgb.setResolution(dai.ColorCameraProperties.SensorResolution.THE_720_P)
+        camRgb.setResolution(dai.ColorCameraProperties.SensorResolution.THE_1080_P)
         camRgb.setFps(self.node.fps)
-        ## -------------- FOR NAV TASK -------------
-        # enc.setDefaultProfilePreset(15, dai.VideoEncoderProperties.Profile.MJPEG)
-        # enc.setLossless(False)
-        # enc.setQuality(100)# --> revert to 30 for other tasks
-        # enc.setNumFramesPool(2)
-        # enc.setFrameRate(self.node.fps)
 
-        # #OAKD Hardware encoder for rgb jpeg stream
-        # camRgb.video.link(enc.input)
-        # enc.bitstream.link(rgbOut.input)# already-compressed JPEG
-        ## --------------------------------
-        
-        camRgb.isp.link(rgbOut.input) # FOR OTHER TASKS
+        enc = self.pipeline.create(dai.node.VideoEncoder)
+        enc.setDefaultProfilePreset(self.node.fps, dai.VideoEncoderProperties.Profile.MJPEG)
+        enc.setLossless(False)
+        enc.setQuality(80)
+        enc.setNumFramesPool(2)
+        camRgb.video.link(enc.input)
+        enc.bitstream.link(rgbOut.input)
 
         # ------------------ end RGB ------------------
         self.device = dai.Device(self.pipeline, maxUsbSpeed=dai.UsbSpeed.SUPER_PLUS)  #10Gbps USB3.2 gen2
@@ -115,36 +109,25 @@ class OakDStereoCamera():
 
         self.depth_pub = self.node.create_publisher(Image, self.depth_topic_string, qos_profile=self.node.qos_profile)
 
-	    ### -- NEW STUFF FROM 13TH AUGUST TO LIMIT THE DATA RATE OF THE CAMERA -- ###
-        self.target_mbps = 10.0
-        self.min_quality = 15
-        self.max_quality = 95
-        self.quality = 40                 # start point
-        self.scale = 1.0                  # downscale factor if needed
-        self.ema_alpha = 0.2              # smoothing for size/bw
-
-        self.bytes_per_frame_budget = max(1, int((self.target_mbps * 1e6) / 8.0 / max(1, self.node.fps)))
-        self.ema_bytes = self.bytes_per_frame_budget
-
-	    ### ------------------------------------------------------------------- ###
+        self.last_jpeg_data = None
      
     def take_screenshot(self, request, response):
-        if self.frameRgb is not None:
-            self.node.get_logger().info(f"reiugf")
-            name = str(time.strftime("%Y-%m-%d_%H:%M:%S", time.localtime())) + '.png'
-            image_dir  = os.path.join(
-                '/home/xplore/dev_ws/photos_competition',
-                self.path_images
-            )
-            os.makedirs(image_dir, exist_ok=True)
-
-            image_path = os.path.join(image_dir, name)            
-            cv2.imwrite(image_path, self.frameRgb)
-            
-            response.success = True
+        jpeg = getattr(self, 'last_jpeg_data', None)
+        if jpeg is not None:
+            frame = cv2.imdecode(np.frombuffer(jpeg, np.uint8), cv2.IMREAD_COLOR)
+            if frame is not None:
+                name = str(time.strftime("%Y-%m-%d_%H:%M:%S", time.localtime())) + '.png'
+                image_dir = os.path.join(
+                    '/home/xplore/dev_ws/photos_competition',
+                    self.path_images
+                )
+                os.makedirs(image_dir, exist_ok=True)
+                cv2.imwrite(os.path.join(image_dir, name), frame)
+                response.success = True
+            else:
+                response.success = False
         else:
             response.success = False
-            
         return response
 
     # Depth mode: 0 => Off, 1 => On
@@ -240,145 +223,88 @@ class OakDStereoCamera():
 
         self.node.get_logger().info("STARTING TO PUBLISH FRAMES")
         frameDisp = None
-        encoded_image = None
+        jpeg_data = None
         previous_time = 0
 
-
-
-########################################################
-
         while not self.node.stopped:
-            ### -- NOT FOR NAV,  NEW STUFF FROM 13TH AUGUST TO LIMIT THE DATA RATE OF THE CAMERA -- ###
-            encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), self.quality]
-            ### --------------------------------------------------------------------- ###
-            
+          try:
             if self.depth_mode:
                 queueEvents = self.device.getQueueEvents(("rgb", "disp"))
-                
+
                 latestPacket = {}
                 latestPacket["rgb"] = None
                 latestPacket["disp"] = None
-                
+
                 for queueName in queueEvents:
                     packets = self.device.getOutputQueue(queueName, maxSize=2, blocking=False).tryGetAll()
                     if len(packets) > 0:
                         latestPacket[queueName] = packets[-1]
-            
+
                 if latestPacket["rgb"] is not None:
-                    frameRgb = latestPacket["rgb"].getCvFrame()
+                    raw = latestPacket["rgb"].getData()
+                    jpeg_data = np.array(raw, dtype=np.uint8).tobytes()
+                    self.last_jpeg_data = jpeg_data
 
                 if latestPacket["disp"] is not None:
                     frameDisp = latestPacket["disp"].getFrame()
-                    #maxDisparity = self.stereo.initialConfig.getMaxDisparity()
-                    # Optional, extend range 0..95 -> 0..255, for a better visualisation
-                    #if 1: frameDisp = (frameDisp * 255. / maxDisparity).astype(np.uint8)
-                    # Optional, apply false colorization
-                    #if 1: frameDisp = cv2.applyColorMap(frameDisp, cv2.COLORMAP_HOT)
                     frameDisp = np.ascontiguousarray(frameDisp)
-            
-                if frameRgb is not None and frameDisp is not None:
-                    
-                    # Convert encoded bytes to ROS-compressed message
+
+                if jpeg_data is not None and frameDisp is not None:
                     compressed_msg = CompressedImage()
+                    compressed_msg.header.stamp = self.node.get_clock().now().to_msg()
                     compressed_msg.format = "jpeg"
-                    compressed_msg.data = bytearray(frameRgb)
+                    compressed_msg.data = jpeg_data
                     self.node.cam_pubs.publish(compressed_msg)
-                    
-                    # Need to have both frames in BGR format before blending
+
                     if len(frameDisp.shape) < 3:
                         frameDisp = cv2.cvtColor(frameDisp, cv2.COLOR_GRAY2BGR)
-                     
-                    # get a portion of the depth for bandwidth improvements
+
                     depth_img_normalized = cv2.normalize(frameDisp, None, 0, 255, cv2.NORM_MINMAX)
                     msg = Image()
                     msg.header.stamp = self.node.get_clock().now().to_msg()
                     msg.height = depth_img_normalized.shape[0]
                     msg.width = depth_img_normalized.shape[1]
-                    msg.encoding = "mono16"  # Encoding for uint16 depth images
+                    msg.encoding = "mono16"
                     msg.is_bigendian = False
-                    msg.step = msg.width * 2  # 2 bytes per pixel
+                    msg.step = msg.width * 2
                     msg.data = depth_img_normalized.tobytes()
-                    self.depth_pub.publish(msg)  
-                    
+                    self.depth_pub.publish(msg)
+
                     current_time = time.time()
                     bw = self.node.calculate_bandwidth(current_time, previous_time, len(compressed_msg.data) + len(msg.data))
-                    previous_time = current_time 
+                    previous_time = current_time
                     self.node.cam_bw.publish(bw)
-                    
-                    frameRgb = None
-                    frameDisp = None        
+
+                    jpeg_data = None
+                    frameDisp = None
 
                     time.sleep(1/self.node.fps)
 
             else:
                 self.queueEvents = self.device.getQueueEvents(("rgb"))
-                                
+
                 latestPacket = {}
                 latestPacket["rgb"] = None
-                
+
                 for queueName in self.queueEvents:
                     packets = self.device.getOutputQueue(queueName).tryGetAll()
                     if len(packets) > 0:
                         latestPacket[queueName] = packets[-1]
-                
+
                 if latestPacket["rgb"] is not None:
-                    self.frameRgb = latestPacket["rgb"].getCvFrame()
-                    
-                if self.frameRgb is not None:
-                                        
-                    ### -- NOT NAV TASK NEW STUFF FROM 13TH AUGUST TO LIMIT THE DATA RATE OF THE CAMERA -- ###
-                    if self.scale < 0.999:
-                        new_w = max(64, int(self.frameRgb.shape[1] * self.scale))
-                        new_h = max(64, int(self.frameRgb.shape[0] * self.scale))
-                        frameRgb = cv2.resize(self.frameRgb, (new_w, new_h), interpolation=cv2.INTER_AREA)
-                    
-                    ok, buf = cv2.imencode('.jpg', self.frameRgb, encode_param)
-                    if not ok:
-                        continue
-                
-                    data = buf.tobytes()
-                    #self.node.get_logger().info(f"encodeeee paramm: {encode_param}")
-                    ##########################################
+                    raw = latestPacket["rgb"].getData()
+                    jpeg_data = np.array(raw, dtype=np.uint8).tobytes()
+                    self.last_jpeg_data = jpeg_data
 
-                    # Convert encoded bytes to ROS-compressed message
                     compressed_msg = CompressedImage()
+                    compressed_msg.header.stamp = self.node.get_clock().now().to_msg()
                     compressed_msg.format = "jpeg"
-                    #compressed_msg.data = bytearray(self.frameRgb) # FOR NAV TASK
-                    compressed_msg.data = data # NOT FOR NAV TASK
-                    ### -------------------------------------------------------------------- ###
+                    compressed_msg.data = jpeg_data
                     self.node.cam_pubs.publish(compressed_msg)
-                    
+
                     current_time = time.time()
-                    bw = self.node.calculate_bandwidth(current_time, previous_time, len(compressed_msg.data))
-                    previous_time = current_time 
+                    bw = self.node.calculate_bandwidth(current_time, previous_time, len(jpeg_data))
+                    previous_time = current_time
                     self.node.cam_bw.publish(bw)
-                    
-                    self.frameRgb = None
-
-		            # ---- NOT NAV TASK Adaptive control ------------------------------------------------
-                    size_bytes = len(data)
-                    # Smooth the measurement
-                    self.ema_bytes = (1 - self.ema_alpha) * self.ema_bytes + self.ema_alpha * size_bytes
-
-                    # Error vs. per-frame budget
-                    err = self.ema_bytes - self.bytes_per_frame_budget
-                    rel = err / float(self.bytes_per_frame_budget)
-
-                    # Adjust JPEG quality (simple proportional controller)
-                    # Negative rel => under budget => increase quality; positive => decrease.
-                    k_q = 12.0  # aggressiveness; tune 6–20
-                    self.quality -= k_q * rel
-                    self.quality = max(self.min_quality, self.quality)
-                    #self.node.get_logger().info(f"P controller cam min: {self.quality}")
-                    self.quality = max(self.min_quality, min(self.max_quality, int(round(self.quality))))
-                    #self.node.get_logger().info(f"P controller cam AFTER: {self.quality}")
-
-
-                    # If quality bottomed out and still over budget, start downscaling a bit
-                    if self.quality <= self.min_quality and self.ema_bytes > 1.15 * self.bytes_per_frame_budget:
-                        # reduce scale by small steps, but not below, say, 0.5
-                        self.scale = max(0.5, self.scale * 0.6)
-                    # If comfortably under budget and quality near top, gently upscale back
-                    elif self.ema_bytes < 0.7 * self.bytes_per_frame_budget and self.quality >= self.max_quality - 2:
-                        self.scale = min(1.0, self.scale * 1.01)
-                    # # ----------------------------------------------------------------------
+          except Exception as e:
+                self.node.get_logger().error(f"publish_feeds error: {e}", throttle_duration_sec=2.0)

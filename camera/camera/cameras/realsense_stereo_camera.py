@@ -235,6 +235,7 @@ class RealSenseStereoCamera():
 
                 if(rgb_time - prev_rgb_time >= 1/(self.node.fps)):
                     compressed_image = self.bridge.cv2_to_compressed_imgmsg(frame, dst_format="jpeg")
+                    compressed_image.header.stamp = self.node.get_clock().now().to_msg()
                     self.node.cam_pubs.publish(compressed_image)
 
                     current_time = time.time()
@@ -252,6 +253,7 @@ class RealSenseStereoCamera():
                 frame_color, frame_depth = self.get_rgbd(spatial, temporal, hole_filling)
                 
                 compressed_image = self.bridge.cv2_to_compressed_imgmsg(frame_color)
+                compressed_image.header.stamp = self.node.get_clock().now().to_msg()
                 self.node.cam_pubs.publish(compressed_image)
                 
                 msg = Image()
