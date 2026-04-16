@@ -30,6 +30,7 @@ class CameraNode(Node):
         self.declare_parameter("fps", 10)
         self.declare_parameter("x", 640)
         self.declare_parameter("y", 480)
+        self.declare_parameter("jpeg_quality", 95)
         self.camera_type = self.get_parameter("camera_type").get_parameter_value().string_value
         self.service_topic = self.get_parameter("topic_service").get_parameter_value().string_value
         self.publisher_topic = self.get_parameter("topic_pub").get_parameter_value().string_value
@@ -39,6 +40,10 @@ class CameraNode(Node):
         self.fps = self.get_parameter("fps").get_parameter_value().integer_value
         self.x = self.get_parameter("x").get_parameter_value().integer_value
         self.y = self.get_parameter("y").get_parameter_value().integer_value
+        self.jpeg_quality = self.get_parameter("jpeg_quality").get_parameter_value().integer_value
+
+        if self.camera_type == "monocular":
+            self.get_logger().info(f"devrule (camera device): {self.devrule!r}")
 
         # To be used for any camera
         self.qos_profile = QoSProfile(
@@ -60,23 +65,30 @@ class CameraNode(Node):
         # Service to activate the camera. For now we hardcode the parameters so we use just a SetBool
         self.service_activation = self.create_service(SetBool, self.service_topic, self.start_cameras_callback, callback_group=self.callback_group)
 
-        self.thread = threading.Thread(target=self.camera.publish_feeds, args=(self.devrule,))
-    
+        if self.camera_type == "oakd_stereo":
+            self.thread = threading.Thread(target=self.camera.publish_feeds)
+        elif self.camera_type == "realsense_stereo":
+            self.thread = threading.Thread(target=self.camera.publish_feeds, args=(self.devrule,))
+        else:
+            # monocular: `devrule` is read inside publish_feeds only
+            self.thread = threading.Thread(target=self.camera.publish_feeds)
+
         self.get_logger().info("Cameras ready")
-    
+
     def start_cameras_callback(self, request, response):
         if request.data:
             self.stopped = False
 
             # Only start the thread if it's not already running
             if not hasattr(self, 'thread') or not self.thread.is_alive():
-                if self.camera_type == "oakd_stereo": 
+                if self.camera_type == "oakd_stereo":
                     self.thread = threading.Thread(target=self.camera.publish_feeds)
                 elif self.camera_type == "realsense_stereo":
                     self.thread = threading.Thread(target=self.camera.publish_feeds, args=(self.devrule,))
                 else:
-                    self.thread = threading.Thread(target=self.camera.publish_feeds, args=(self.devrule,))
-                
+                    # monocular: `devrule` is read inside publish_feeds only
+                    self.thread = threading.Thread(target=self.camera.publish_feeds)
+
                 self.get_logger().info("before starting thread")
                 self.thread.start()
                 response.success = True
