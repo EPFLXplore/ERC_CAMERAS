@@ -1,5 +1,6 @@
 import depthai as dai
 import cv2
+import sys
 import time, os
 import numpy as np
 from cv_bridge import CvBridge
@@ -10,10 +11,30 @@ from std_srvs.srv import SetBool
 from sensor_msgs.msg import Image
 from rclpy.callback_groups import ReentrantCallbackGroup, MutuallyExclusiveCallbackGroup
 
+_C_RESET = "\033[0m"
+_C_GREEN = "\033[1;32m"
+_C_RED = "\033[1;31m"
+_C_YELLOW = "\033[1;33m"
+
+# Multi-camera USB hub: staggered launch + retries reduce X_LINK_DEVICE_NOT_FOUND.
+_MAX_DEVICE_ATTEMPTS = 5
+_DEVICE_RETRY_DELAY_SEC = 1.5
+
+
 class Oak1WStereoCamera():
     def __init__(self, node):
-        print("Found Oak1W Stereo Camera : ", dai.Device.getAllAvailableDevices())
         self.node = node
+        devices = dai.Device.getAllAvailableDevices()
+        if devices:
+            print(
+                f"{_C_GREEN}Oak1W: DepthAI USB scan — {len(devices)} device(s): {devices}{_C_RESET}",
+                flush=True,
+            )
+        else:
+            print(
+                f"{_C_RED}Oak1W: DepthAI USB scan — no devices found (check USB / power).{_C_RESET}",
+                flush=True,
+            )
         self.bridge = CvBridge()
         self.frameRgb = None
         
@@ -71,9 +92,41 @@ class Oak1WStereoCamera():
         # info = dai.DeviceInfo(self.serial_number)  # devrule from node params
         # self.device = dai.Device(self.pipeline, info, maxUsbSpeed=dai.UsbSpeed.SUPER_PLUS)  #10Gbps USB3.2 gen2
         # self.device = dai.Device(self.pipeline, maxUsbSpeed=dai.UsbSpeed.SUPER_PLUS)  #10Gbps USB3.2 gen2
-        # node.get_logger().error("Avant device.")
-        self.device = dai.Device(self.pipeline, deviceInfo=dai.DeviceInfo(str(node.cam_id)))  #10Gbps USB3.2 gen2
-        # node.get_logger().error("Après device.")
+        for attempt in range(1, _MAX_DEVICE_ATTEMPTS + 1):
+            try:
+                self.device = dai.Device(
+                    self.pipeline, deviceInfo=dai.DeviceInfo(str(node.cam_id))
+                )  # 10Gbps USB3.2 gen2
+                break
+            except Exception as e:
+                last_err = e
+                if attempt < _MAX_DEVICE_ATTEMPTS:
+                    print(
+                        f"{_C_YELLOW}Oak1W: open failed cam_id={node.cam_id!r} "
+                        f"(attempt {attempt}/{_MAX_DEVICE_ATTEMPTS}): {e}; "
+                        f"retry in {_DEVICE_RETRY_DELAY_SEC}s{_C_RESET}",
+                        file=sys.stderr,
+                        flush=True,
+                    )
+                    time.sleep(_DEVICE_RETRY_DELAY_SEC)
+                else:
+                    print(
+                        f"{_C_RED}Oak1W: failed to open device cam_id={node.cam_id!r} "
+                        f"after {_MAX_DEVICE_ATTEMPTS} attempts: {e}{_C_RESET}",
+                        file=sys.stderr,
+                        flush=True,
+                    )
+                    print(
+                        f"{_C_RED}Oak1W: currently visible devices: "
+                        f"{dai.Device.getAllAvailableDevices()}{_C_RESET}",
+                        file=sys.stderr,
+                        flush=True,
+                    )
+                    raise
+        print(
+            f"{_C_GREEN}Oak1W: opened DepthAI device cam_id={node.cam_id!r}.{_C_RESET}",
+            flush=True,
+        )
         self.rgbQueue = self.device.getOutputQueue("rgb", maxSize=1, blocking=False)
 
         self.queueEvents = []
@@ -166,6 +219,10 @@ class Oak1WStereoCamera():
         """Publish RGB feeds."""
 
         self.node.get_logger().info("STARTING TO PUBLISH FRAMES")
+        print(
+            f"{_C_GREEN}Oak1W: publishing RGB frames (JPEG).{_C_RESET}",
+            flush=True,
+        )
         encoded_image = None
         previous_time = 0
 
