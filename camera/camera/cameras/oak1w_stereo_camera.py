@@ -17,22 +17,81 @@ _C_RED = "\033[1;31m"
 _C_YELLOW = "\033[1;33m"
 
 # Multi-camera USB hub: staggered launch + retries reduce X_LINK_DEVICE_NOT_FOUND.
-_MAX_DEVICE_ATTEMPTS = 5
-_DEVICE_RETRY_DELAY_SEC = 1.5
+_MAX_DEVICE_ATTEMPTS = 10
+_DEVICE_RETRY_DELAY_SEC = 2.0
+# DepthAI may list fewer devices until siblings finish booting; wait before dai.Device().
+_MXID_WAIT_TIMEOUT_SEC = 30.0
+_MXID_WAIT_POLL_SEC = 0.5
+_MXID_WAIT_LOG_INTERVAL_SEC = 5.0
+
+
+def _device_mxid(device_info) -> str:
+    """Serial / MXID string from depthai.DeviceInfo for error logs (API varies by depthai version)."""
+    get_mxid = getattr(device_info, "getMxId", None) or getattr(device_info, "getMxid", None)
+    if callable(get_mxid):
+        try:
+            return str(get_mxid())
+        except Exception:
+            pass
+    for attr in ("mxid", "deviceId", "name"):
+        if hasattr(device_info, attr):
+            try:
+                return str(getattr(device_info, attr))
+            except Exception:
+                pass
+    return repr(device_info)
+
+
+def _devices_serial_summary() -> str:
+    devs = dai.Device.getAllAvailableDevices()
+    if not devs:
+        return "(none)"
+    return ", ".join(_device_mxid(d) for d in devs)
+
+
+def _mxid_list_from_scan() -> list:
+    return [_device_mxid(d) for d in dai.Device.getAllAvailableDevices()]
+
+
+def _wait_until_mxid_in_depthai_scan(mxid: str, ros_name: str, timeout_sec: float) -> bool:
+    """Return True once getAllAvailableDevices() includes this MXID, else False after timeout."""
+    mxid = (mxid or "").strip()
+    if not mxid:
+        return True
+    deadline = time.monotonic() + timeout_sec
+    last_log = 0.0
+    while time.monotonic() < deadline:
+        if mxid in _mxid_list_from_scan():
+            return True
+        now = time.monotonic()
+        if now - last_log >= _MXID_WAIT_LOG_INTERVAL_SEC:
+            last_log = now
+            vis = _mxid_list_from_scan()
+            print(
+                f"{_C_YELLOW}Oak1W: waiting for MXID {mxid!r} (node {ros_name!r}) in DepthAI scan; "
+                f"visible_mxids={vis}{_C_RESET}",
+                flush=True,
+            )
+        time.sleep(_MXID_WAIT_POLL_SEC)
+    return False
 
 
 class Oak1WStereoCamera():
     def __init__(self, node):
         self.node = node
+        serial = str(node.cam_id) if getattr(node, "cam_id", "") else ""
+        ros_name = node.get_name()
         devices = dai.Device.getAllAvailableDevices()
         if devices:
             print(
-                f"{_C_GREEN}Oak1W: DepthAI USB scan — {len(devices)} device(s): {devices}{_C_RESET}",
+                f"{_C_GREEN}Oak1W: DepthAI USB scan — {len(devices)} device(s) visible here "
+                f"(MXIDs already opened in another camera node are usually omitted): {devices}{_C_RESET}",
                 flush=True,
             )
         else:
             print(
-                f"{_C_RED}Oak1W: DepthAI USB scan — no devices found (check USB / power).{_C_RESET}",
+                f"{_C_RED}Oak1W: DepthAI USB scan — no devices found (check USB / power). "
+                f"requested_serial/MXID={serial!r} ROS node={ros_name!r}{_C_RESET}",
                 flush=True,
             )
         self.bridge = CvBridge()
@@ -92,18 +151,24 @@ class Oak1WStereoCamera():
         # info = dai.DeviceInfo(self.serial_number)  # devrule from node params
         # self.device = dai.Device(self.pipeline, info, maxUsbSpeed=dai.UsbSpeed.SUPER_PLUS)  #10Gbps USB3.2 gen2
         # self.device = dai.Device(self.pipeline, maxUsbSpeed=dai.UsbSpeed.SUPER_PLUS)  #10Gbps USB3.2 gen2
+        if serial and not _wait_until_mxid_in_depthai_scan(serial, ros_name, _MXID_WAIT_TIMEOUT_SEC):
+            print(
+                f"{_C_YELLOW}Oak1W: MXID {serial!r} still not listed after {_MXID_WAIT_TIMEOUT_SEC}s; "
+                f"proceeding to open anyway (visible_mxids={_mxid_list_from_scan()}){_C_RESET}",
+                flush=True,
+            )
+        _open_kw = {"deviceInfo": dai.DeviceInfo(str(node.cam_id))}
+        if hasattr(dai, "UsbSpeed") and hasattr(dai.UsbSpeed, "SUPER"):
+            _open_kw["maxUsbSpeed"] = dai.UsbSpeed.SUPER
         for attempt in range(1, _MAX_DEVICE_ATTEMPTS + 1):
             try:
-                self.device = dai.Device(
-                    self.pipeline, deviceInfo=dai.DeviceInfo(str(node.cam_id))
-                )  # 10Gbps USB3.2 gen2
+                self.device = dai.Device(self.pipeline, **_open_kw)
                 break
             except Exception as e:
-                last_err = e
                 if attempt < _MAX_DEVICE_ATTEMPTS:
                     print(
-                        f"{_C_YELLOW}Oak1W: open failed cam_id={node.cam_id!r} "
-                        f"(attempt {attempt}/{_MAX_DEVICE_ATTEMPTS}): {e}; "
+                        f"{_C_YELLOW}Oak1W: open failed serial/MXID={serial!r} "
+                        f"ROS node={ros_name!r} (attempt {attempt}/{_MAX_DEVICE_ATTEMPTS}): {e}; "
                         f"retry in {_DEVICE_RETRY_DELAY_SEC}s{_C_RESET}",
                         file=sys.stderr,
                         flush=True,
@@ -111,20 +176,27 @@ class Oak1WStereoCamera():
                     time.sleep(_DEVICE_RETRY_DELAY_SEC)
                 else:
                     print(
-                        f"{_C_RED}Oak1W: failed to open device cam_id={node.cam_id!r} "
-                        f"after {_MAX_DEVICE_ATTEMPTS} attempts: {e}{_C_RESET}",
+                        f"{_C_RED}Oak1W: failed to open after {_MAX_DEVICE_ATTEMPTS} attempts — "
+                        f"serial/MXID={serial!r} ROS node={ros_name!r}: {e}{_C_RESET}",
                         file=sys.stderr,
                         flush=True,
                     )
                     print(
-                        f"{_C_RED}Oak1W: currently visible devices: "
+                        f"{_C_RED}Oak1W: visible DeviceInfo list: "
                         f"{dai.Device.getAllAvailableDevices()}{_C_RESET}",
+                        file=sys.stderr,
+                        flush=True,
+                    )
+                    print(
+                        f"{_C_RED}Oak1W: visible serials/MXIDs (parsed): "
+                        f"{_devices_serial_summary()}{_C_RESET}",
                         file=sys.stderr,
                         flush=True,
                     )
                     raise
         print(
-            f"{_C_GREEN}Oak1W: opened DepthAI device cam_id={node.cam_id!r}.{_C_RESET}",
+            f"{_C_GREEN}Oak1W: opened DepthAI device serial/MXID={serial!r} "
+            f"ROS node={ros_name!r}.{_C_RESET}",
             flush=True,
         )
         self.rgbQueue = self.device.getOutputQueue("rgb", maxSize=1, blocking=False)

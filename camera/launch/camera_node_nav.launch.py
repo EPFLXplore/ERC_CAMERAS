@@ -176,16 +176,17 @@ def generate_launch_description():
         ],
     )
 
-    # Stagger DepthAI opens: three simultaneous dai.Device() boots on one USB hub
-    # often yields X_LINK_DEVICE_NOT_FOUND on one camera; delays spread XLink boot.
-    nav_1_delayed = TimerAction(period=3.0, actions=[nav_1_oak1w_21W_T2544_0008])
-    nav_2_delayed = TimerAction(period=6.0, actions=[nav_2_oak1w_21W_T2544_0035])
+    # Stagger all three: dai.Device runs in CameraNode.__init__. Delay nav_0 so it does
+    # not race Ouster + stack at t=0; wide gaps so DepthAI can list each MXID before open.
+    nav_0_delayed = TimerAction(period=2.0, actions=[nav_0_oak1w_21W_T2544_0069])
+    nav_1_delayed = TimerAction(period=12.0, actions=[nav_1_oak1w_21W_T2544_0008])
+    nav_2_delayed = TimerAction(period=22.0, actions=[nav_2_oak1w_21W_T2544_0035])
 
     return LaunchDescription([
         # nav_front_camera,
         # TimerAction(period=2.0, actions=[nav_realsense_aruco_camera_left]),
         # TimerAction(period=4.0, actions=[nav_realsense_aruco_camera_right]),
-        nav_0_oak1w_21W_T2544_0069,
+        nav_0_delayed,
         nav_1_delayed,
         nav_2_delayed,
     ])
