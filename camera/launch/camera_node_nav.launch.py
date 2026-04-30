@@ -178,9 +178,9 @@ def generate_launch_description():
 
     # Stagger all three: dai.Device runs in CameraNode.__init__. Delay nav_0 so it does
     # not race Ouster + stack at t=0; wide gaps so DepthAI can list each MXID before open.
-    nav_0_delayed = TimerAction(period=2.0, actions=[nav_0_oak1w_21W_T2544_0069])
-    nav_1_delayed = TimerAction(period=12.0, actions=[nav_1_oak1w_21W_T2544_0008])
-    nav_2_delayed = TimerAction(period=22.0, actions=[nav_2_oak1w_21W_T2544_0035])
+    nav_0_delayed = TimerAction(period=1.0, actions=[nav_0_oak1w_21W_T2544_0069])
+    nav_1_delayed = TimerAction(period=3.0, actions=[nav_1_oak1w_21W_T2544_0008])
+    nav_2_delayed = TimerAction(period=5.0, actions=[nav_2_oak1w_21W_T2544_0035])
 
     return LaunchDescription([
         # nav_front_camera,
