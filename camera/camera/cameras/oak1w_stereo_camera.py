@@ -2,6 +2,7 @@ import depthai as dai
 import cv2
 import sys
 import time, os
+import threading
 import numpy as np
 from cv_bridge import CvBridge
 from std_msgs.msg import Float32
@@ -79,8 +80,15 @@ def _wait_until_mxid_in_depthai_scan(mxid: str, ros_name: str, timeout_sec: floa
 class Oak1WStereoCamera():
     def __init__(self, node):
         self.node = node
-        serial = str(node.cam_id) if getattr(node, "cam_id", "") else ""
-        ros_name = node.get_name()
+        self.serial = str(node.cam_id) if getattr(node, "cam_id", "") else ""
+        self.ros_name = node.get_name()
+        self.device_lock = threading.Lock()
+        self.device = None
+        self.rgbQueue = None
+        self.queueEvents = []
+        self.last_jpeg_data = None
+        self.last_open_time = None
+        self.last_frame_time = None
         devices = dai.Device.getAllAvailableDevices()
         if devices:
             print(
@@ -91,7 +99,7 @@ class Oak1WStereoCamera():
         else:
             print(
                 f"{_C_RED}Oak1W: DepthAI USB scan — no devices found (check USB / power). "
-                f"requested_serial/MXID={serial!r} ROS node={ros_name!r}{_C_RESET}",
+                f"requested_serial/MXID={self.serial!r} ROS node={self.ros_name!r}{_C_RESET}",
                 flush=True,
             )
         self.bridge = CvBridge()
@@ -131,7 +139,10 @@ class Oak1WStereoCamera():
         # RGB Properties
         rgbCamSocket = dai.CameraBoardSocket.CAM_A
         camRgb.setBoardSocket(rgbCamSocket)
-        camRgb.setResolution(dai.ColorCameraProperties.SensorResolution.THE_720_P)
+        camRgb.setResolution(dai.ColorCameraProperties.SensorResolution.THE_1080_P)
+        # camRgb.setIspScale(2, 3)  # 1920×1080 → 1280×720 (multiply by 2/3)*      
+        camRgb.setIspScale(3, 3)  # 1920×1080 → 1280×720 (multiply by 2/3)
+
         camRgb.setFps(self.node.fps)
 
         rgbOut.input.setBlocking(False)
@@ -148,62 +159,6 @@ class Oak1WStereoCamera():
         # camRgb.isp.link(rgbOut.input) # FOR OTHER TASKS
 
         # ------------------ end RGB ------------------
-        # info = dai.DeviceInfo(self.serial_number)  # devrule from node params
-        # self.device = dai.Device(self.pipeline, info, maxUsbSpeed=dai.UsbSpeed.SUPER_PLUS)  #10Gbps USB3.2 gen2
-        # self.device = dai.Device(self.pipeline, maxUsbSpeed=dai.UsbSpeed.SUPER_PLUS)  #10Gbps USB3.2 gen2
-        if serial and not _wait_until_mxid_in_depthai_scan(serial, ros_name, _MXID_WAIT_TIMEOUT_SEC):
-            print(
-                f"{_C_YELLOW}Oak1W: MXID {serial!r} still not listed after {_MXID_WAIT_TIMEOUT_SEC}s; "
-                f"proceeding to open anyway (visible_mxids={_mxid_list_from_scan()}){_C_RESET}",
-                flush=True,
-            )
-        _open_kw = {"deviceInfo": dai.DeviceInfo(str(node.cam_id))}
-        if hasattr(dai, "UsbSpeed") and hasattr(dai.UsbSpeed, "SUPER"):
-            _open_kw["maxUsbSpeed"] = dai.UsbSpeed.SUPER
-        for attempt in range(1, _MAX_DEVICE_ATTEMPTS + 1):
-            try:
-                self.device = dai.Device(self.pipeline, **_open_kw)
-                break
-            except Exception as e:
-                if attempt < _MAX_DEVICE_ATTEMPTS:
-                    print(
-                        f"{_C_YELLOW}Oak1W: open failed serial/MXID={serial!r} "
-                        f"ROS node={ros_name!r} (attempt {attempt}/{_MAX_DEVICE_ATTEMPTS}): {e}; "
-                        f"retry in {_DEVICE_RETRY_DELAY_SEC}s{_C_RESET}",
-                        file=sys.stderr,
-                        flush=True,
-                    )
-                    time.sleep(_DEVICE_RETRY_DELAY_SEC)
-                else:
-                    print(
-                        f"{_C_RED}Oak1W: failed to open after {_MAX_DEVICE_ATTEMPTS} attempts — "
-                        f"serial/MXID={serial!r} ROS node={ros_name!r}: {e}{_C_RESET}",
-                        file=sys.stderr,
-                        flush=True,
-                    )
-                    print(
-                        f"{_C_RED}Oak1W: visible DeviceInfo list: "
-                        f"{dai.Device.getAllAvailableDevices()}{_C_RESET}",
-                        file=sys.stderr,
-                        flush=True,
-                    )
-                    print(
-                        f"{_C_RED}Oak1W: visible serials/MXIDs (parsed): "
-                        f"{_devices_serial_summary()}{_C_RESET}",
-                        file=sys.stderr,
-                        flush=True,
-                    )
-                    raise
-        print(
-            f"{_C_GREEN}Oak1W: opened DepthAI device serial/MXID={serial!r} "
-            f"ROS node={ros_name!r}.{_C_RESET}",
-            flush=True,
-        )
-        self.rgbQueue = self.device.getOutputQueue("rgb", maxSize=1, blocking=False)
-
-        self.queueEvents = []
-        self.last_jpeg_data = None
-
 	    ### -- NEW STUFF FROM 13TH AUGUST TO LIMIT THE DATA RATE OF THE CAMERA -- ###
         self.target_mbps = 10.0
         self.min_quality = 15
@@ -216,7 +171,110 @@ class Oak1WStereoCamera():
         self.ema_bytes = self.bytes_per_frame_budget
 
 	    ### ------------------------------------------------------------------- ###
-     
+
+    def open_device(self):
+        with self.device_lock:
+            if self.device is not None and self.rgbQueue is not None:
+                return
+
+            if self.serial and not _wait_until_mxid_in_depthai_scan(self.serial, self.ros_name, _MXID_WAIT_TIMEOUT_SEC):
+                print(
+                    f"{_C_YELLOW}Oak1W: MXID {self.serial!r} still not listed after {_MXID_WAIT_TIMEOUT_SEC}s; "
+                    f"proceeding to open anyway (visible_mxids={_mxid_list_from_scan()}){_C_RESET}",
+                    flush=True,
+                )
+
+            _open_kw = {"deviceInfo": dai.DeviceInfo(str(self.node.cam_id))}
+            if hasattr(dai, "UsbSpeed") and hasattr(dai.UsbSpeed, "SUPER"):
+                _open_kw["maxUsbSpeed"] = dai.UsbSpeed.SUPER
+
+            for attempt in range(1, _MAX_DEVICE_ATTEMPTS + 1):
+                try:
+                    self.device = dai.Device(self.pipeline, **_open_kw)
+                    self.rgbQueue = self.device.getOutputQueue("rgb", maxSize=1, blocking=False)
+                    self.last_open_time = time.monotonic()
+                    break
+                except Exception as e:
+                    self.device = None
+                    self.rgbQueue = None
+                    if attempt < _MAX_DEVICE_ATTEMPTS:
+                        print(
+                            f"{_C_YELLOW}Oak1W: open failed serial/MXID={self.serial!r} "
+                            f"ROS node={self.ros_name!r} (attempt {attempt}/{_MAX_DEVICE_ATTEMPTS}): {e}; "
+                            f"retry in {_DEVICE_RETRY_DELAY_SEC}s{_C_RESET}",
+                            file=sys.stderr,
+                            flush=True,
+                        )
+                        time.sleep(_DEVICE_RETRY_DELAY_SEC)
+                    else:
+                        print(
+                            f"{_C_RED}Oak1W: failed to open after {_MAX_DEVICE_ATTEMPTS} attempts — "
+                            f"serial/MXID={self.serial!r} ROS node={self.ros_name!r}: {e}{_C_RESET}",
+                            file=sys.stderr,
+                            flush=True,
+                        )
+                        print(
+                            f"{_C_RED}Oak1W: visible DeviceInfo list: "
+                            f"{dai.Device.getAllAvailableDevices()}{_C_RESET}",
+                            file=sys.stderr,
+                            flush=True,
+                        )
+                        print(
+                            f"{_C_RED}Oak1W: visible serials/MXIDs (parsed): "
+                            f"{_devices_serial_summary()}{_C_RESET}",
+                            file=sys.stderr,
+                            flush=True,
+                        )
+                        raise
+
+            print(
+                f"{_C_GREEN}Oak1W: opened DepthAI device serial/MXID={self.serial!r} "
+                f"ROS node={self.ros_name!r}.{_C_RESET}",
+                flush=True,
+            )
+
+    def close_device(self):
+        with self.device_lock:
+            self.rgbQueue = None
+            if self.device is not None:
+                try:
+                    self.device.close()
+                except Exception:
+                    pass
+                self.device = None
+            self.last_open_time = None
+            self.last_frame_time = None
+
+    def destroy_ros_entities(self):
+        if self.take_screenshot is not None:
+            self.node.destroy_service(self.take_screenshot)
+            self.take_screenshot = None
+        if self.camera_info_service is not None:
+            self.node.destroy_service(self.camera_info_service)
+            self.camera_info_service = None
+
+    def is_open(self):
+        with self.device_lock:
+            return self.device is not None and self.rgbQueue is not None
+
+    def is_healthy(self, timeout_sec):
+        if not self.is_open():
+            return False
+
+        now = time.monotonic()
+        if self.last_frame_time is not None:
+            return (now - self.last_frame_time) <= timeout_sec
+
+        if self.last_open_time is None:
+            return False
+
+        # Give a newly opened device one timeout window to deliver its first frame.
+        return (now - self.last_open_time) <= timeout_sec
+
+    def restart_device(self):
+        self.close_device()
+        self.open_device()
+
     def take_screenshot(self, request, response):
         jpeg = self.last_jpeg_data
         if jpeg is not None:
@@ -242,8 +300,28 @@ class Oak1WStereoCamera():
         return response
 
     def camera_params_callback(self, request, response):
-        intrinsics = self.get_intrinsics()
-        distortion_coefficients = self.get_coeffs()
+        opened_for_calibration = False
+        try:
+            if not self.is_open():
+                self.open_device()
+                opened_for_calibration = True
+            intrinsics = self.get_intrinsics()
+            distortion_coefficients = self.get_coeffs()
+        except Exception as e:
+            self.node.get_logger().error(
+                f"Failed to read camera calibration for MXID={self.serial!r}: {e}",
+                throttle_duration_sec=1.0,
+            )
+            response.fx = 0.0
+            response.fy = 0.0
+            response.cx = 0.0
+            response.cy = 0.0
+            response.distortion_coefficients = []
+            return response
+        finally:
+            if opened_for_calibration and getattr(self.node, "stopped", True):
+                self.close_device()
+
         response.fx = float(intrinsics[0][0]) # fx
         response.fy = float(intrinsics[1][1]) # fy
         response.cx = float(intrinsics[0][2]) # cx
@@ -268,7 +346,11 @@ class Oak1WStereoCamera():
 
     def get_intrinsics(self):
         calib_data = self.device.readCalibration()
-        intrinsics = calib_data.getCameraIntrinsics(dai.CameraBoardSocket.RGB)
+        intrinsics = calib_data.getCameraIntrinsics(
+            dai.CameraBoardSocket.RGB,
+            1920,  # final output width after setIspScale(2,3)
+            1080    # final output height after setIspScale(2,3)
+        )
         return intrinsics
 
     def get_coeffs(self):
@@ -295,43 +377,57 @@ class Oak1WStereoCamera():
             f"{_C_GREEN}Oak1W: publishing RGB frames (JPEG).{_C_RESET}",
             flush=True,
         )
-        encoded_image = None
         previous_time = 0
+        reconnect_delay_sec = 1.0
+        max_reconnect_delay_sec = 10.0
 
 
 
 ########################################################
 
         while not self.node.stopped:
-            self.queueEvents = self.device.getQueueEvents(("rgb"))
-                            
-            latestPacket = {}
-            latestPacket["rgb"] = None
-            
-            for queueName in self.queueEvents:
-                packets = self.device.getOutputQueue(queueName).tryGetAll()
-                if len(packets) > 0:
-                    latestPacket[queueName] = packets[-1]
-                else:
-                    # Avoid CPU usage with TryGetAll all the time
-                    time.sleep(0.001)
-                    continue
-            
-            if latestPacket["rgb"] is not None:
-                raw = latestPacket["rgb"].getData()
-                jpeg_data = np.array(raw, dtype=np.uint8).tobytes()
-                self.last_jpeg_data = jpeg_data
+            try:
+                if self.device is None or self.rgbQueue is None:
+                    self.open_device()
+                    reconnect_delay_sec = 1.0
 
-                compressed_msg = CompressedImage()
-                compressed_msg.header.stamp = self.node.get_clock().now().to_msg()
-                compressed_msg.format = "bgr8; jpeg compressed"
-                compressed_msg.data = jpeg_data
-                self.node.cam_pubs.publish(compressed_msg)
+                self.queueEvents = self.device.getQueueEvents(("rgb"))
+                                
+                latestPacket = {}
+                latestPacket["rgb"] = None
                 
-                current_time = time.time()
-                bw = self.node.calculate_bandwidth(current_time, previous_time, len(compressed_msg.data))
-                previous_time = current_time 
-                self.node.cam_bw.publish(bw)
+                for queueName in self.queueEvents:
+                    packets = self.rgbQueue.tryGetAll() if queueName == "rgb" else self.device.getOutputQueue(queueName).tryGetAll()
+                    if len(packets) > 0:
+                        latestPacket[queueName] = packets[-1]
+                    else:
+                        # Avoid CPU usage with TryGetAll all the time
+                        time.sleep(0.001)
+                        continue
                 
-                self.frameRgb = None
-    
+                if latestPacket["rgb"] is not None:
+                    raw = latestPacket["rgb"].getData()
+                    jpeg_data = np.array(raw, dtype=np.uint8).tobytes()
+                    self.last_jpeg_data = jpeg_data
+
+                    compressed_msg = CompressedImage()
+                    compressed_msg.header.stamp = self.node.get_clock().now().to_msg()
+                    compressed_msg.format = "bgr8; jpeg compressed"
+                    compressed_msg.data = jpeg_data
+                    self.node.cam_pubs.publish(compressed_msg)
+                    self.last_frame_time = time.monotonic()
+                    
+                    current_time = time.time()
+                    bw = self.node.calculate_bandwidth(current_time, previous_time, len(compressed_msg.data))
+                    previous_time = current_time 
+                    self.node.cam_bw.publish(bw)
+                    
+                    self.frameRgb = None
+            except Exception as e:
+                self.node.get_logger().error(
+                    f"publish_feeds error, reconnecting in {reconnect_delay_sec:.1f}s: {e}",
+                    throttle_duration_sec=1.0,
+                )
+                self.close_device()
+                time.sleep(reconnect_delay_sec)
+                reconnect_delay_sec = min(max_reconnect_delay_sec, reconnect_delay_sec * 2.0)

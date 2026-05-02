@@ -2,10 +2,10 @@
 #Date: 22/11/2024
 
 from launch import LaunchDescription
-from launch_ros.actions import Node
+from launch_ros.actions import LifecycleNode
 import os
 from ament_index_python import get_package_share_directory
-from launch.actions import TimerAction
+from launch.actions import TimerAction, ExecuteProcess, RegisterEventHandler
 
 
 def get_package_file(package, file_path):
@@ -103,10 +103,10 @@ def generate_launch_description():
     #     ],
     # )
 
-    nav_0_oak1w_21W_T2544_0069 = Node(
+    nav_0_oak1w_21W_T2544_0008 = LifecycleNode(
         package='camera',
         executable='camera',
-        name='nav_0_oak1w_21W_T2544_0069',
+        name='nav_0_oak1w_21W_T2544_0008',
         namespace='/NAV',
         parameters=[
             {'camera_type': "oak1w_stereo"},
@@ -123,14 +123,17 @@ def generate_launch_description():
             {'x': 1280},
             {'y': 720},
             {'flip_camera':False},
-            {'cam_id':"19443010A19E157E00"}
+            {'cam_id':"19443010714B177E00"},
+            {'health_check_period_sec': 1.0},
+            {'health_timeout_sec': 3.0},
         ],
+        output='screen'
     )
 
-    nav_1_oak1w_21W_T2544_0008 = Node(
+    nav_1_oak1w_21W_T2544_0069 = LifecycleNode(
         package='camera',
         executable='camera',
-        name='nav_1_oak1w_21W_T2544_0008',
+        name='nav_1_oak1w_21W_T2544_0069',
         namespace='/NAV',
         parameters=[
             {'camera_type': "oak1w_stereo"},
@@ -147,12 +150,13 @@ def generate_launch_description():
             {'x': 1280},
             {'y': 720},
             {'flip_camera':False},
-            {'cam_id':"19443010714B177E00"},
+            {'cam_id':"19443010A19E157E00"},
+            {'health_check_period_sec': 1.0},
+            {'health_timeout_sec': 3.0},
         ],
-        output='screen'
     )
 
-    nav_2_oak1w_21W_T2544_0035 = Node(
+    nav_2_oak1w_21W_T2544_0035 = LifecycleNode(
         package='camera',
         executable='camera',
         name='nav_2_oak1w_21W_T2544_0035',
@@ -173,14 +177,94 @@ def generate_launch_description():
             {'y': 720},
             {'flip_camera':False},
             {'cam_id':"19443010816C177E00"},
+            {'health_check_period_sec': 1.0},
+            {'health_timeout_sec': 3.0},
         ],
     )
 
-    # Stagger all three: dai.Device runs in CameraNode.__init__. Delay nav_0 so it does
-    # not race Ouster + stack at t=0; wide gaps so DepthAI can list each MXID before open.
-    nav_0_delayed = TimerAction(period=1.0, actions=[nav_0_oak1w_21W_T2544_0069])
-    nav_1_delayed = TimerAction(period=3.0, actions=[nav_1_oak1w_21W_T2544_0008])
+    configure_camera_0 = ExecuteProcess(
+        cmd=['ros2', 'lifecycle', 'set',
+             '/NAV/nav_0_oak1w_21W_T2544_0008',
+             'configure'],
+        output='screen'
+    )
+
+    configure_camera_1 = ExecuteProcess(
+        cmd=['ros2', 'lifecycle', 'set',
+             '/NAV/nav_1_oak1w_21W_T2544_0069',
+             'configure'],
+        output='screen'
+    )
+
+    configure_camera_2 = ExecuteProcess(
+        cmd=['ros2', 'lifecycle', 'set',
+             '/NAV/nav_2_oak1w_21W_T2544_0035',
+             'configure'],
+        output='screen'
+    )
+
+    activate_camera_0 = ExecuteProcess(
+        cmd=['ros2', 'lifecycle', 'set',
+             '/NAV/nav_0_oak1w_21W_T2544_0008',
+             'activate'],
+        output='screen'
+    )
+
+    activate_camera_1 = ExecuteProcess(
+        cmd=['ros2', 'lifecycle', 'set',
+             '/NAV/nav_1_oak1w_21W_T2544_0069',
+             'activate'],
+        output='screen'
+    )
+
+    activate_camera_2 = ExecuteProcess(
+        cmd=['ros2', 'lifecycle', 'set',
+             '/NAV/nav_2_oak1w_21W_T2544_0035',
+             'activate'],
+        output='screen'
+    )
+
+    call_camera_0 = ExecuteProcess(
+        cmd=['ros2', 'service', 'call',
+             '/NAV/req_camera_nav_0',
+             'std_srvs/srv/SetBool',
+             '{data: true}'],
+        output='screen'
+    )
+
+    call_camera_1 = ExecuteProcess(
+        cmd=['ros2', 'service', 'call',
+             '/NAV/req_camera_nav_1',
+             'std_srvs/srv/SetBool',
+             '{data: true}'],
+        output='screen'
+    )
+
+    call_camera_2 = ExecuteProcess(
+        cmd=['ros2', 'service', 'call',
+             '/NAV/req_camera_nav_2',
+             'std_srvs/srv/SetBool',
+             '{data: true}'],
+        output='screen'
+    )
+
+    # Stagger all three: lifecycle configure creates services/camera objects;
+    # SetBool activation still owns hardware open/stream start.
+    nav_0_delayed = TimerAction(period=1.0, actions=[nav_0_oak1w_21W_T2544_0008])
+    nav_1_delayed = TimerAction(period=3.0, actions=[nav_1_oak1w_21W_T2544_0069])
     nav_2_delayed = TimerAction(period=5.0, actions=[nav_2_oak1w_21W_T2544_0035])
+
+    configure_camera_0_delayed = TimerAction(period=2.0, actions=[configure_camera_0])
+    configure_camera_1_delayed = TimerAction(period=4.0, actions=[configure_camera_1])
+    configure_camera_2_delayed = TimerAction(period=6.0, actions=[configure_camera_2])
+
+    activate_camera_0_delayed = TimerAction(period=3.0, actions=[activate_camera_0])
+    activate_camera_1_delayed = TimerAction(period=5.0, actions=[activate_camera_1])
+    activate_camera_2_delayed = TimerAction(period=7.0, actions=[activate_camera_2])
+
+    call_camera_0_delayed = TimerAction(period=9.0, actions=[call_camera_0])
+    call_camera_1_delayed = TimerAction(period=9.0, actions=[call_camera_1])
+    call_camera_2_delayed = TimerAction(period=9.0, actions=[call_camera_2])
 
     return LaunchDescription([
         # nav_front_camera,
@@ -189,4 +273,13 @@ def generate_launch_description():
         nav_0_delayed,
         nav_1_delayed,
         nav_2_delayed,
+        configure_camera_0_delayed,
+        configure_camera_1_delayed,
+        configure_camera_2_delayed,
+        activate_camera_0_delayed,
+        activate_camera_1_delayed,
+        activate_camera_2_delayed,
+        call_camera_0_delayed,
+        call_camera_1_delayed,
+        call_camera_2_delayed,
     ])
