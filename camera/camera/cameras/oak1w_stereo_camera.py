@@ -140,8 +140,12 @@ class Oak1WStereoCamera():
         rgbCamSocket = dai.CameraBoardSocket.CAM_A
         camRgb.setBoardSocket(rgbCamSocket)
         camRgb.setResolution(dai.ColorCameraProperties.SensorResolution.THE_1080_P)
-        # camRgb.setIspScale(2, 3)  # 1920×1080 → 1280×720 (multiply by 2/3)*      
-        camRgb.setIspScale(3, 3)  # 1920×1080 → 1280×720 (multiply by 2/3)
+        # ISP size must match ROS params (x,y) used for getCameraIntrinsics and for JPEG decode.
+        # Luxonis convention: setIspScale(2, 3) on THE_1080_P → 1280×720.
+        tw, th = int(self.node.x), int(self.node.y)
+        if tw == 1280 and th == 720:
+            camRgb.setIspScale(2, 3)
+        # else: leave default ISP size for THE_1080_P (typically 1920×1080); intrinsics use (tw, th).
 
         camRgb.setFps(self.node.fps)
 
@@ -346,10 +350,13 @@ class Oak1WStereoCamera():
 
     def get_intrinsics(self):
         calib_data = self.device.readCalibration()
+        # Must match the actual encoded RGB resolution (same as camera node x,y / ISP scale).
+        w = max(1, int(self.node.x))
+        h = max(1, int(self.node.y))
         intrinsics = calib_data.getCameraIntrinsics(
             dai.CameraBoardSocket.RGB,
-            1920,  # final output width after setIspScale(2,3)
-            1080    # final output height after setIspScale(2,3)
+            w,
+            h,
         )
         return intrinsics
 

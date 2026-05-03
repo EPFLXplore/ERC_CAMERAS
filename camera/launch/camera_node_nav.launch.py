@@ -262,9 +262,9 @@ def generate_launch_description():
     activate_camera_1_delayed = TimerAction(period=5.0, actions=[activate_camera_1])
     activate_camera_2_delayed = TimerAction(period=7.0, actions=[activate_camera_2])
 
-    call_camera_0_delayed = TimerAction(period=9.0, actions=[call_camera_0])
-    call_camera_1_delayed = TimerAction(period=9.0, actions=[call_camera_1])
-    call_camera_2_delayed = TimerAction(period=9.0, actions=[call_camera_2])
+    call_camera_0_delayed = TimerAction(period=12.0, actions=[call_camera_0])
+    call_camera_1_delayed = TimerAction(period=12.0, actions=[call_camera_1])
+    call_camera_2_delayed = TimerAction(period=12.0, actions=[call_camera_2])
 
     return LaunchDescription([
         # nav_front_camera,
