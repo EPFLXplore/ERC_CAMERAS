@@ -25,9 +25,8 @@ def generate_launch_description():
         namespace='/HD',
         parameters=[
             {'camera_type': "oakd_stereo"},
-            {'topic_service': "/ROVER/req_camera_hd_0"},
-            {'topic_pub': rover_names['rover_hd_rgb_feed']}, # we concatenate the devrule"},
-            {'topic_pub': rover_names['rover_hd_rgb_feed']}, # we concatenate the devrule"},
+            {'topic_service': rover_names['rover_hd_camera_req']},
+            {'topic_pub': rover_names['rover_hd_rgb_feed']},
             {'depth': "/ROVER/depth_camera_hd_0"},
             {'depth_avg' : rover_names['rover_hd_depth_avg']},
             {'bw_pub': "/HD/bw_camera_hd_0"}, 
