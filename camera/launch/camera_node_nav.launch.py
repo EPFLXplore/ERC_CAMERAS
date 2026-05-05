@@ -6,6 +6,7 @@ from launch_ros.actions import LifecycleNode
 import os
 from ament_index_python import get_package_share_directory
 from launch.actions import TimerAction, ExecuteProcess, RegisterEventHandler
+from launch.event_handlers import OnProcessExit
 
 
 def get_package_file(package, file_path):
@@ -154,6 +155,7 @@ def generate_launch_description():
             {'health_check_period_sec': 1.0},
             {'health_timeout_sec': 3.0},
         ],
+        output='screen',
     )
 
     nav_2_oak1w_21W_T2544_0035 = LifecycleNode(
@@ -180,6 +182,7 @@ def generate_launch_description():
             {'health_check_period_sec': 1.0},
             {'health_timeout_sec': 3.0},
         ],
+        output='screen',
     )
 
     configure_camera_0 = ExecuteProcess(
@@ -250,21 +253,29 @@ def generate_launch_description():
 
     # Stagger all three: lifecycle configure creates services/camera objects;
     # SetBool activation still owns hardware open/stream start.
-    nav_0_delayed = TimerAction(period=1.0, actions=[nav_0_oak1w_21W_T2544_0008])
-    nav_1_delayed = TimerAction(period=3.0, actions=[nav_1_oak1w_21W_T2544_0069])
-    nav_2_delayed = TimerAction(period=5.0, actions=[nav_2_oak1w_21W_T2544_0035])
+    nav_0_delayed = TimerAction(period=0.0, actions=[nav_0_oak1w_21W_T2544_0008])
+    nav_1_delayed = TimerAction(period=15.0, actions=[nav_1_oak1w_21W_T2544_0069])
+    nav_2_delayed = TimerAction(period=30.0, actions=[nav_2_oak1w_21W_T2544_0035])
 
-    configure_camera_0_delayed = TimerAction(period=2.0, actions=[configure_camera_0])
-    configure_camera_1_delayed = TimerAction(period=4.0, actions=[configure_camera_1])
-    configure_camera_2_delayed = TimerAction(period=6.0, actions=[configure_camera_2])
+    configure_camera_0_delayed = TimerAction(period=1.0, actions=[configure_camera_0])
+    configure_camera_1_delayed = TimerAction(period=16.0, actions=[configure_camera_1])
+    configure_camera_2_delayed = TimerAction(period=31.0, actions=[configure_camera_2])
 
-    activate_camera_0_delayed = TimerAction(period=3.0, actions=[activate_camera_0])
-    activate_camera_1_delayed = TimerAction(period=5.0, actions=[activate_camera_1])
-    activate_camera_2_delayed = TimerAction(period=7.0, actions=[activate_camera_2])
+    activate_camera_0_delayed = TimerAction(period=5.0, actions=[activate_camera_0])
+    activate_camera_1_delayed = TimerAction(period=20.0, actions=[activate_camera_1])
+    activate_camera_2_delayed = TimerAction(period=35.0, actions=[activate_camera_2])
 
-    call_camera_0_delayed = TimerAction(period=12.0, actions=[call_camera_0])
-    call_camera_1_delayed = TimerAction(period=12.0, actions=[call_camera_1])
-    call_camera_2_delayed = TimerAction(period=12.0, actions=[call_camera_2])
+    # Start streaming only after `ros2 lifecycle set ... activate` exits, so
+    # `lifecycle_active` is True before SetBool (fixed 1s timers can race on Jetson).
+    call_after_activate_0 = RegisterEventHandler(
+        OnProcessExit(target_action=activate_camera_0, on_exit=[call_camera_0])
+    )
+    call_after_activate_1 = RegisterEventHandler(
+        OnProcessExit(target_action=activate_camera_1, on_exit=[call_camera_1])
+    )
+    call_after_activate_2 = RegisterEventHandler(
+        OnProcessExit(target_action=activate_camera_2, on_exit=[call_camera_2])
+    )
 
     return LaunchDescription([
         # nav_front_camera,
@@ -279,7 +290,7 @@ def generate_launch_description():
         activate_camera_0_delayed,
         activate_camera_1_delayed,
         activate_camera_2_delayed,
-        call_camera_0_delayed,
-        call_camera_1_delayed,
-        call_camera_2_delayed,
+        call_after_activate_0,
+        call_after_activate_1,
+        call_after_activate_2,
     ])

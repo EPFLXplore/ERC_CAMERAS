@@ -188,9 +188,14 @@ class Oak1WStereoCamera():
                     flush=True,
                 )
 
-            _open_kw = {"deviceInfo": dai.DeviceInfo(str(self.node.cam_id))}
-            if hasattr(dai, "UsbSpeed") and hasattr(dai.UsbSpeed, "SUPER"):
-                _open_kw["maxUsbSpeed"] = dai.UsbSpeed.SUPER
+            # _open_kw = {"deviceInfo": dai.DeviceInfo(str(self.node.cam_id))}
+            # if hasattr(dai, "UsbSpeed") and hasattr(dai.UsbSpeed, "SUPER"):
+            #     _open_kw["maxUsbSpeed"] = dai.UsbSpeed.SUPER
+
+            _open_kw = {
+                "deviceInfo": dai.DeviceInfo(str(self.node.cam_id)),
+                "maxUsbSpeed": dai.UsbSpeed.HIGH
+            }
 
             for attempt in range(1, _MAX_DEVICE_ATTEMPTS + 1):
                 try:
