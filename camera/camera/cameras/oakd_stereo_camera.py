@@ -30,6 +30,11 @@ class OakDStereoCamera:
             self.node.get_parameter("depth").get_parameter_value().string_value
         )
 
+        self.node.declare_parameter("topic_internal_pub", self.node.default)
+        self.topic_internal_pub = (
+            self.node.get_parameter("topic_internal_pub").get_parameter_value().string_value
+        )
+
         self.node.declare_parameter("depth_avg", self.node.default)
         self.depth_avg_topic_string = (
             self.node.get_parameter("depth_avg").get_parameter_value().string_value
@@ -68,6 +73,12 @@ class OakDStereoCamera:
         self.depth_avg_pubs = self.node.create_publisher(
             Image, self.depth_avg_topic_string, qos_profile=self.node.qos_profile
         )
+        self.cam_pubs = self.node.create_publisher(
+            CompressedImage, self.node.publisher_topic, qos_profile=self.node.qos_profile
+        )
+        self.cam_internal_pubs = self.node.create_publisher(
+            CompressedImage, self.topic_internal_pub, qos_profile=self.node.qos_profile
+        )
 
         # ------------------- Device and pipeline init -------------------
         self.pipeline = dai.Pipeline()
@@ -87,8 +98,8 @@ class OakDStereoCamera:
         ## ---------- Camera parameters ----------
         self.rgbCamSocket = dai.CameraBoardSocket.CAM_A
         monoResolution = dai.MonoCameraProperties.SensorResolution.THE_480_P
-        #rgbResolution = dai.ColorCameraProperties.SensorResolution.THE_4_K #don't forget to update the resolution of intrasics
-        rgbResolution = dai.ColorCameraProperties.SensorResolution.THE_1080_P
+        rgbResolution = dai.ColorCameraProperties.SensorResolution.THE_4_K #don't forget to update the resolution of intrasics
+        #rgbResolution = dai.ColorCameraProperties.SensorResolution.THE_1080_P
         self.previous_frames : deque[np.ndarray] = deque(maxlen=self.number_of_frames_to_average)
         ### ------------ For HDS --------------
         #For Nav it should be the other way around
@@ -319,9 +330,30 @@ class OakDStereoCamera:
 
         return response
 
-    def pubslish_rgb(self):
-        if self.rgb_queue is None:
+    def publish_rgb_external(self, frame=None):
+        
+        if frame is None:
             return 0, False
+
+        encode_param = [int(cv2.IMWRITE_JPEG_QUALITY),70]
+
+        frame_480p = cv2.resize(frame, (854, 480))
+
+        success, encoded_image = cv2.imencode(".jpg", frame_480p, encode_param)
+        if not success:
+            self.node.get_logger().warn("Failed to compress RGB frame.")
+            return 0, False
+
+        compressed_msg = CompressedImage()
+        compressed_msg.header.stamp = self.node.get_clock().now().to_msg()
+        compressed_msg.format = "jpeg"
+        compressed_msg.data = encoded_image.tobytes()
+        self.cam_pubs.publish(compressed_msg)
+        return len(compressed_msg.data), True
+
+    def publish_rgb_internal(self):
+        if self.rgb_queue is None:
+            return None
 
         encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 25]
 
@@ -331,7 +363,7 @@ class OakDStereoCamera:
             # X_LINK_ERROR etc.
             self.node.get_logger().error(f"DepthAI RGB stream error: {e}")
             self._reconnect("rgb stream error")
-            return 0, False
+            return None
 
         if rgb_packet is not None:
             frameRgb = rgb_packet.getCvFrame()
@@ -342,16 +374,16 @@ class OakDStereoCamera:
             success, encoded_image = cv2.imencode(".jpg", frameRgb, encode_param)
             if not success:
                 self.node.get_logger().warn("Failed to compress RGB frame.")
-                return 0, False
+                return frameRgb
 
             compressed_msg = CompressedImage()
             compressed_msg.header.stamp = self.node.get_clock().now().to_msg()
             compressed_msg.format = "jpeg"
             compressed_msg.data = encoded_image.tobytes()
-            self.node.cam_pubs.publish(compressed_msg)
-            return len(compressed_msg.data), True
+            self.cam_internal_pubs.publish(compressed_msg)
+            return frameRgb
 
-        return 0, False
+        return None
 
     def publish_image(self, frame):
         msg = Image()
@@ -397,6 +429,8 @@ class OakDStereoCamera:
         period_s = 1.0 / max(1, int(self.node.fps))
         next_tick = time.time()
 
+        i = 0
+
         with self._dev_lock:
             if self.device is None:
                 self._open_device()
@@ -411,17 +445,24 @@ class OakDStereoCamera:
                     time.sleep(next_tick - now)
                 next_tick = max(next_tick + period_s, time.time())
 
-                bytes_rgb, rgb_packet_state = self.pubslish_rgb()
+                frameRGB = self.publish_rgb_internal()
 
+                if (i==0):
+                    bytes_rgb, rgb_packet_state = self.publish_rgb_external(frameRGB)
+                    if rgb_packet_state:
+                        current_time = time.time()
+                        bw = self.node.calculate_bandwidth(
+                            current_time, previous_time, bytes_rgb
+                        )
+                        previous_time = current_time
+                        self.node.cam_bw.publish(bw)
+                    i+=1
+                else:
+                    i = 0
+            
                 if self.depth_mode:
                     self.publish_depths()
 
-                if rgb_packet_state:
-                    current_time = time.time()
-                    bw = self.node.calculate_bandwidth(
-                        current_time, previous_time, bytes_rgb
-                    )
-                    previous_time = current_time
-                    self.node.cam_bw.publish(bw)
+                
         finally:
             self.close()
