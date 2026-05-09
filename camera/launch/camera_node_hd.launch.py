@@ -18,6 +18,10 @@ def get_package_file(package, file_path):
 def generate_launch_description():
     with open('/home/xplore/dev_ws/src/custom_msg/config/rover_interface_names.yaml', 'r') as file:
             rover_names = yaml.safe_load(file)["/**"]["ros__parameters"]
+    
+    with open('/home/xplore/dev_ws/src/custom_msg/config/hd_interface_names.yaml', 'r') as file:
+            hd_names = yaml.safe_load(file)["/**"]["ros__parameters"]
+
     camera_hd_gripper = Node(
         package='camera',
         executable='camera',
@@ -25,7 +29,8 @@ def generate_launch_description():
         namespace='/HD',
         parameters=[
             {'camera_type': "oakd_stereo"},
-            {'topic_service': rover_names['rover_hd_camera_req']},
+            {'topic_service': "/ROVER/req_camera_hd_0"},
+            {'topic_internal_pub': hd_names['hd_internal_camera_rgb']},
             {'topic_pub': rover_names['rover_hd_rgb_feed']},
             {'depth': "/ROVER/depth_camera_hd_0"},
             {'depth_avg' : rover_names['rover_hd_depth_avg']},
