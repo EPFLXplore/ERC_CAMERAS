@@ -98,9 +98,12 @@ class OakDStereoCamera:
         ## ---------- Camera parameters ----------
         self.rgbCamSocket = dai.CameraBoardSocket.CAM_A
         monoResolution = dai.MonoCameraProperties.SensorResolution.THE_480_P
-        rgbResolution = dai.ColorCameraProperties.SensorResolution.THE_4_K #don't forget to update the resolution of intrasics
-        #rgbResolution = dai.ColorCameraProperties.SensorResolution.THE_1080_P
+        #rgbResolution = dai.ColorCameraProperties.SensorResolution.THE_4_K # at 30 fps induces delay
+        rgbResolution = dai.ColorCameraProperties.SensorResolution.THE_1080_P
         self.previous_frames : deque[np.ndarray] = deque(maxlen=self.number_of_frames_to_average)
+
+        self.CS_resolution = (498, 280)
+        self.CS_compression_quality = 92
         ### ------------ For HDS --------------
         #For Nav it should be the other way around
         subpixel = False
@@ -335,9 +338,9 @@ class OakDStereoCamera:
         if frame is None:
             return 0, False
 
-        encode_param = [int(cv2.IMWRITE_JPEG_QUALITY),70]
+        encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), self.CS_compression_quality]
 
-        frame_480p = cv2.resize(frame, (854, 480))
+        frame_480p = cv2.resize(frame, (self.CS_resolution[0], self.CS_resolution[1]), interpolation=cv2.INTER_AREA)
 
         success, encoded_image = cv2.imencode(".jpg", frame_480p, encode_param)
         if not success:
