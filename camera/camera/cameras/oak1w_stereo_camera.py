@@ -128,14 +128,13 @@ class Oak1WStereoCamera:
         cam_rgb.setBoardSocket(dai.CameraBoardSocket.CAM_A)
         cam_rgb.setResolution(dai.ColorCameraProperties.SensorResolution.THE_1080_P)
 
+        width = int(self.node.get_parameter("x").value)
+        height = int(self.node.get_parameter("y").value)
         g = gcd(height, 1080)
         scale_num = height // g
         scale_den = 1080 // g
         cam_rgb.setIspScale(scale_num, scale_den)
 
-        cam_rgb.setVideoSize(width, height)
-        width = int(self.node.get_parameter("x").value)
-        height = int(self.node.get_parameter("y").value)
         cam_rgb.setVideoSize(width, height)
         cam_rgb.setFps(self.node.fps)
 
