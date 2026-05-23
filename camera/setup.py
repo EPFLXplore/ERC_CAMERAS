@@ -26,7 +26,8 @@ setup(
     entry_points={
         "console_scripts": [
             "camera = camera.camera_node:main",
-            "delete_after_erc_2025 = camera.to_delete_after_erc_2025:main"
+            "delete_after_erc_2025 = camera.to_delete_after_erc_2025:main",
+            "gst_camera_bridge = camera.gst_camera_bridge:main",  # add this
         ],
     },
 )

@@ -24,8 +24,11 @@ class CameraFactory():
             try:
                 from .cameras.oakd_stereo_camera import OakDStereoCamera
                 return OakDStereoCamera(node)
-            except ModuleNotFoundError:
-                node.get_logger().error("OakDStereoCamera requires 'depthai' which is not installed.")
+            except ModuleNotFoundError as e:
+                node.get_logger().error(
+                    "OakDStereoCamera import failed (missing oakd_stereo_camera.py in this "
+                    f"package and/or missing depthai). Details: {e}"
+                )
                 raise
         elif node.camera_type == "monocular":
             return MonocularCamera(node)

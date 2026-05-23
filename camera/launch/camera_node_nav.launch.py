@@ -185,6 +185,33 @@ def generate_launch_description():
         output='screen',
     )
 
+    nav_3_oakd = LifecycleNode(
+        package='camera',
+        executable='camera',
+        name='nav_3_oakd',
+        namespace='/NAV',
+        parameters=[
+            {'camera_type': "oak1w_stereo"},
+            {'topic_service': "/NAV/req_camera_nav_3"},
+            {'topic_pub': "/NAV/feed_camera_nav_3"},
+            {'depth': "/NAV/depth_camera_nav_3"},
+            {'bw_pub': "/NAV/bw_camera_nav_3"},
+            {'depth_req': "/NAV/depth_req_camera_nav_3"},
+            {'devrule': ""},
+            {'info': "/NAV/camera_info_3"}, # we concatenate the devrule
+            {'state': "/NAV/state_camera_nav_3"},
+            {'screenshot': '/NAV/screenshot_camera_nav_3'},
+            {'fps': 5},
+            {'x': 1280},
+            {'y': 720},
+            {'flip_camera':False},
+            {'cam_id':"19443010F1C5E01200"},
+            {'health_check_period_sec': 1.0},
+            {'health_timeout_sec': 3.0},
+        ],
+        output='screen',
+    )
+
     configure_camera_0 = ExecuteProcess(
         cmd=['ros2', 'lifecycle', 'set',
              '/NAV/nav_0_oak1w_21W_T2544_0008',
@@ -206,6 +233,13 @@ def generate_launch_description():
         output='screen'
     )
 
+    configure_camera_3 = ExecuteProcess(
+        cmd=['ros2', 'lifecycle', 'set',
+             '/NAV/nav_3_oakd',
+             'configure'],
+        output='screen'
+    ) 
+
     activate_camera_0 = ExecuteProcess(
         cmd=['ros2', 'lifecycle', 'set',
              '/NAV/nav_0_oak1w_21W_T2544_0008',
@@ -223,6 +257,13 @@ def generate_launch_description():
     activate_camera_2 = ExecuteProcess(
         cmd=['ros2', 'lifecycle', 'set',
              '/NAV/nav_2_oak1w_21W_T2544_0035',
+             'activate'],
+        output='screen'
+    )
+
+    activate_camera_3 = ExecuteProcess(
+        cmd=['ros2', 'lifecycle', 'set',
+             '/NAV/nav_3_oakd',
              'activate'],
         output='screen'
     )
@@ -251,19 +292,30 @@ def generate_launch_description():
         output='screen'
     )
 
+    call_camera_3 = ExecuteProcess(
+        cmd=['ros2', 'service', 'call',
+             '/NAV/req_camera_nav_3',
+             'std_srvs/srv/SetBool',
+             '{data: true}'],
+        output='screen'
+    )
+
     # Stagger all three: lifecycle configure creates services/camera objects;
     # SetBool activation still owns hardware open/stream start.
     nav_0_delayed = TimerAction(period=0.0, actions=[nav_0_oak1w_21W_T2544_0008])
     nav_1_delayed = TimerAction(period=15.0, actions=[nav_1_oak1w_21W_T2544_0069])
     nav_2_delayed = TimerAction(period=30.0, actions=[nav_2_oak1w_21W_T2544_0035])
+    nav_3_delayed = TimerAction(period=45.0, actions=[nav_3_oakd])
 
     configure_camera_0_delayed = TimerAction(period=1.0, actions=[configure_camera_0])
     configure_camera_1_delayed = TimerAction(period=16.0, actions=[configure_camera_1])
     configure_camera_2_delayed = TimerAction(period=31.0, actions=[configure_camera_2])
+    configure_camera_3_delayed = TimerAction(period=46.0, actions=[configure_camera_3])
 
     activate_camera_0_delayed = TimerAction(period=5.0, actions=[activate_camera_0])
     activate_camera_1_delayed = TimerAction(period=20.0, actions=[activate_camera_1])
     activate_camera_2_delayed = TimerAction(period=35.0, actions=[activate_camera_2])
+    activate_camera_3_delayed = TimerAction(period=50.0, actions=[activate_camera_3])
 
     # Start streaming only after `ros2 lifecycle set ... activate` exits, so
     # `lifecycle_active` is True before SetBool (fixed 1s timers can race on Jetson).
@@ -276,6 +328,9 @@ def generate_launch_description():
     call_after_activate_2 = RegisterEventHandler(
         OnProcessExit(target_action=activate_camera_2, on_exit=[call_camera_2])
     )
+    call_after_activate_3 = RegisterEventHandler(
+        OnProcessExit(target_action=activate_camera_3, on_exit=[call_camera_3])
+    )
 
     return LaunchDescription([
         # nav_front_camera,
@@ -284,13 +339,17 @@ def generate_launch_description():
         nav_0_delayed,
         nav_1_delayed,
         nav_2_delayed,
+        nav_3_delayed,
         configure_camera_0_delayed,
         configure_camera_1_delayed,
         configure_camera_2_delayed,
+        configure_camera_3_delayed,
         activate_camera_0_delayed,
         activate_camera_1_delayed,
         activate_camera_2_delayed,
+        activate_camera_3_delayed,
         call_after_activate_0,
         call_after_activate_1,
         call_after_activate_2,
+        call_after_activate_3,
     ])

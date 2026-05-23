@@ -44,6 +44,8 @@ class CameraNode(LifecycleNode):
         self.declare_parameter("fps", 10)
         self.declare_parameter("x", 640)
         self.declare_parameter("y", 480)
+        # MJPEG encoder quality for DepthAI hardware JPEG (1–100); lower = smaller bandwidth.
+        self.declare_parameter("jpeg_quality", 95)
         self.declare_parameter("cam_id", self.default)
         self.declare_parameter("health_check_period_sec", 1.0)
         self.declare_parameter("health_timeout_sec", 3.0)
