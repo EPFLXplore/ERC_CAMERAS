@@ -99,7 +99,7 @@ exec ros2 service call "$S" std_srvs/srv/SetBool '{{data: true}}'
 def generate_launch_description():
     declare_gcs_ip = DeclareLaunchArgument(
     "gcs_ip",
-    default_value="169.254.55.166",
+    default_value="169.254.55.164", # IPv4 of CS NUC
     description="Control station IP address",
     )
 
@@ -315,6 +315,7 @@ def generate_launch_description():
         OnProcessExit(target_action=activate_3, on_exit=[call_3])
     )
 
+    #launch gstream feeds to be visualized at the CS
     gst_bridge = RosNode(
     package="camera",
     executable="gst_camera_bridge",

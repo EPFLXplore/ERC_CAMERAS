@@ -19,7 +19,7 @@ setup(
     install_requires=["setuptools"],
     zip_safe=True,
     maintainer="xplore",
-    maintainer_email="matthieu.andre@epfl.ch",
+    maintainer_email="arno.laurie@epfl.ch",
     description="TODO: Package description",
     license="TODO: License declaration",
     tests_require=["pytest"],

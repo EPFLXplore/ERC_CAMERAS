@@ -205,6 +205,7 @@ def generate_launch_description():
             {'x': 1280},
             {'y': 720},
             {'flip_camera':False},
+            # {'cam_id':"19443010714B177E00"},
             {'cam_id':"19443010F1C5E01200"},
             {'health_check_period_sec': 1.0},
             {'health_timeout_sec': 3.0},

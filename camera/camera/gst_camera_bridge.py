@@ -9,6 +9,9 @@ from sensor_msgs.msg import CompressedImage
 
 Gst.init(None)
 
+# this node subscribes to ROS2 CompressedImage topics inside the rover, and creates independant 
+# Gstreamer feeds
+
 _CAMERAS = [
     {"topic": "/CS/feed_camera_nav_0", "port": 5000},
     {"topic": "/CS/feed_camera_nav_1", "port": 5002},
@@ -16,6 +19,9 @@ _CAMERAS = [
     {"topic": "/CS/feed_camera_nav_3", "port": 5006},
 ]
 
+
+KBPS_PER_CAM = 800
+CAM_FPS = 15
 
 class CameraStream:
     def __init__(self, index, topic, host, port, width, height, fps, logger):
@@ -25,10 +31,19 @@ class CameraStream:
         self._duration = Gst.SECOND // fps
 
         pipeline_str = (
-            f"appsrc name=src{index} is-live=true block=false format=time "
+            f"appsrc name=src{index} "
+            f"is-live=true format=time block=false "
+            f"max-buffers=1 leaky-type=downstream "
             f"caps=\"image/jpeg,width={width},height={height},framerate={fps}/1\" "
-            f"! rtpjpegpay "
-            f"! udpsink host={host} port={port} sync=false buffer-size=524288"
+            f"! queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 leaky=downstream "
+            f"! jpegdec "
+            f"! videoconvert "
+            f"! video/x-raw,format=I420,width={width},height={height},framerate={fps}/1 "
+            f"! x264enc bitrate={KBPS_PER_CAM} tune=zerolatency speed-preset=ultrafast "
+            f"key-int-max={fps} "
+            f"! h264parse "
+            f"! rtph264pay pt=96 config-interval=1 mtu=1200 "
+            f"! udpsink host={host} port={port} sync=false async=false buffer-size=65536"
         )
         self._pipeline = Gst.parse_launch(pipeline_str)
         self._appsrc = self._pipeline.get_by_name(f"src{index}")
@@ -51,11 +66,11 @@ class CameraStream:
 class GstCameraBridgeNode(Node):
     def __init__(self):
         super().__init__("gst_camera_bridge")
-        self.declare_parameter("host", "169.254.55.166")
+        self.declare_parameter("host", "169.254.55.164") # Control Station NUC
         self.declare_parameter("base_port", 5000)
         self.declare_parameter("width", 428)
         self.declare_parameter("height", 240)
-        self.declare_parameter("fps", 15)
+        self.declare_parameter("fps", CAM_FPS)
 
         host      = self.get_parameter("host").value
         base_port = self.get_parameter("base_port").value
