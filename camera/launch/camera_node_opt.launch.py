@@ -99,8 +99,24 @@ exec ros2 service call "$S" std_srvs/srv/SetBool '{{data: true}}'
 def generate_launch_description():
     declare_gcs_ip = DeclareLaunchArgument(
     "gcs_ip",
-    default_value="169.254.55.164", # IPv4 of CS NUC
+    default_value="169.254.55.164", # .166 is IPv4 of CS NUC
     description="Control station IP address",
+    )
+
+    declare_gst_width = DeclareLaunchArgument(
+        "gst_width",
+        default_value="428",
+        description="GStreamer encoding width (resolution fed to x264enc).",
+    )
+    declare_gst_height = DeclareLaunchArgument(
+        "gst_height",
+        default_value="240",
+        description="GStreamer encoding height.",
+    )
+    declare_gst_bitrate = DeclareLaunchArgument(
+        "gst_bitrate",
+        default_value="800",
+        description="x264 target bitrate in kbps (adjustable at runtime via ros2 param set).",
     )
 
     gcs_ip = LaunchConfiguration("gcs_ip")
@@ -108,6 +124,9 @@ def generate_launch_description():
     opt_width        = LaunchConfiguration("opt_width")
     opt_height       = LaunchConfiguration("opt_height")
     opt_fps          = LaunchConfiguration("opt_fps")
+    gst_width        = LaunchConfiguration("gst_width")
+    gst_height       = LaunchConfiguration("gst_height")
+    gst_bitrate      = LaunchConfiguration("gst_bitrate")
 
     declare_opt_jpeg_quality = DeclareLaunchArgument(
         "opt_jpeg_quality",
@@ -317,18 +336,20 @@ def generate_launch_description():
 
     #launch gstream feeds to be visualized at the CS
     gst_bridge = RosNode(
-    package="camera",
-    executable="gst_camera_bridge",
-    name="gst_camera_bridge",
-    namespace="/CS",
-    parameters=[
-        {"host":      ParameterValue(gcs_ip,     value_type=str)},
-        {"base_port": 5000},
-        {"width":     ParameterValue(opt_width,  value_type=int)},
-        {"height":    ParameterValue(opt_height, value_type=int)},
-        {"fps":       ParameterValue(opt_fps,    value_type=int)},
-    ],
-    output="screen",
+        package="camera",
+        executable="gst_camera_bridge",
+        name="gst_camera_bridge",
+        namespace="/NAV",
+        parameters=[
+            {"mode":      "nav"},
+            {"host":      ParameterValue(gcs_ip,      value_type=str)},
+            {"base_port": 5000},
+            {"width":     ParameterValue(gst_width,   value_type=int)},
+            {"height":    ParameterValue(gst_height,  value_type=int)},
+            {"fps":       ParameterValue(opt_fps,     value_type=int)},
+            {"bitrate":   ParameterValue(gst_bitrate, value_type=int)},
+        ],
+        output="screen",
     )
 
     gst_bridge_delayed = TimerAction(period=15.0, actions=[gst_bridge])
@@ -339,6 +360,9 @@ def generate_launch_description():
         declare_opt_width,
         declare_opt_height,
         declare_opt_fps,
+        declare_gst_width,
+        declare_gst_height,
+        declare_gst_bitrate,
         delayed_0,
         delayed_1,
         delayed_2,
