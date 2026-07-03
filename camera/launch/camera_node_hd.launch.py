@@ -27,7 +27,7 @@ def generate_launch_description():
 
     declare_gst_host = DeclareLaunchArgument(
         "gst_host",
-        default_value="169.254.55.165",
+        default_value="169.254.55.164",
         description="Control station IP address for the HD GStreamer video bridge.",
     )
     declare_gst_port = DeclareLaunchArgument(
@@ -52,7 +52,7 @@ def generate_launch_description():
     )
     declare_gst_bitrate = DeclareLaunchArgument(
         "gst_bitrate",
-        default_value="1500",
+        default_value="1000",
         description="x264 target bitrate in kbps (adjustable at runtime via ros2 param set).",
     )
 

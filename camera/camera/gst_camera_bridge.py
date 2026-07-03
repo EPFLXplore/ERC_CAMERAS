@@ -83,7 +83,7 @@ class GstHDCameraBridgeNode(Node):
     def __init__(self):
         super().__init__("gst_hd_camera_bridge")
         self.declare_parameter("topic", "/HD/camera/rgb")
-        self.declare_parameter("host", "169.254.55.165")
+        self.declare_parameter("host", "169.254.55.164")
         self.declare_parameter("port", 5013)
         self.declare_parameter("width", 854)
         self.declare_parameter("height", 480)
