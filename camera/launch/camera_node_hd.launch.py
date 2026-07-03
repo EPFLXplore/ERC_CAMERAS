@@ -40,6 +40,7 @@ def generate_launch_description():
             {'depth_req': "/ROVER/depth_req_camera_hd_0"}, # To activate the depth
             {'state_depth': "/ROVER/state_depth_camera_hd_0"},
             {'fps': 30},
+            {'fps_external': 20},
             {'x': 1920},
             {'y': 1080},
             {'flip_camera': False},

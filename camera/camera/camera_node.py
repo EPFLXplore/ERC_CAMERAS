@@ -109,7 +109,13 @@ class CameraNode(Node):
                 self.thread.start()
                 response.success = True
             else:
-                response.success = False
+                if self.camera_type == "oakd_stereo":
+                    self.get_logger().warn(
+                        "Camera is already running. Stop it before starting again."
+                    )
+                    response.success = True
+                else:
+                    response.success = False
         else:
             self.stopped = True
             self.stop_event.set()

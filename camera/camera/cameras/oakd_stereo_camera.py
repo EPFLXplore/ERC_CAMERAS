@@ -10,7 +10,6 @@ from custom_msg.srv import CameraParams
 from std_srvs.srv import SetBool
 from std_msgs.msg import Float32, Bool
 
-
 class OakDStereoCamera:
     def __init__(self, node):
         # ------------------- Defining parameters -------------------
@@ -44,8 +43,17 @@ class OakDStereoCamera:
         self.fps_depth = (
             self.node.get_parameter("fps_depth").get_parameter_value().integer_value
         )
+
+        self.node.declare_parameter("fps_external", 20)
+        self.fps_external = (
+            self.node.get_parameter("fps_external").get_parameter_value().integer_value
+        )
+
         self.node.declare_parameter("number_of_frames_to_average", 1)
-        self.number_of_frames_to_average = self.node.get_parameter("number_of_frames_to_average").get_parameter_value().integer_value
+        self.number_of_frames_to_average = (
+            self.node.get_parameter("number_of_frames_to_average").get_parameter_value().integer_value
+        )
+        
         self.depth_change = self.node.create_service(
             SetBool, self.depth_request, self.depth_callback
         )
@@ -102,8 +110,9 @@ class OakDStereoCamera:
         rgbResolution = dai.ColorCameraProperties.SensorResolution.THE_1080_P
         self.previous_frames : deque[np.ndarray] = deque(maxlen=self.number_of_frames_to_average)
 
-        self.CS_resolution = (426, 240)
-        self.CS_compression_quality = 8
+        self.CS_resolution = (498, 280)
+        self.CS_compression_quality = 15
+
         ### ------------ For HDS --------------
         #For Nav it should be the other way around
         subpixel = False
@@ -135,7 +144,7 @@ class OakDStereoCamera:
             self.depth_res = RESOLUTION_MAP[monoResolution]
         else:
             self.node.get_logger().error(
-                "RGB Resolution not in the map"
+                "Depth Resolution not in the map"
             )
 
 
@@ -432,7 +441,7 @@ class OakDStereoCamera:
         period_s = 1.0 / max(1, int(self.node.fps))
         next_tick = time.time()
 
-        i = 0
+        external_c = 0
 
         with self._dev_lock:
             if self.device is None:
@@ -450,7 +459,10 @@ class OakDStereoCamera:
 
                 frameRGB = self.publish_rgb_internal()
 
-                if (i==0):
+                # Publish external feed at the requested average FPS while the loop runs
+                # publish when counter >= internal_fps, then subtract internal_fps.
+                external_c += self.fps_external
+                if external_c >= self.node.fps:
                     bytes_rgb, rgb_packet_state = self.publish_rgb_external(frameRGB)
                     if rgb_packet_state:
                         current_time = time.time()
@@ -459,10 +471,8 @@ class OakDStereoCamera:
                         )
                         previous_time = current_time
                         self.node.cam_bw.publish(bw)
-                    i+=1
-                else:
-                    i = 0
-            
+                    external_c -= self.node.fps
+        
                 if self.depth_mode:
                     self.publish_depths()
 
