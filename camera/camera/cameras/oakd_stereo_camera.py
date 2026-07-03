@@ -102,8 +102,8 @@ class OakDStereoCamera:
         rgbResolution = dai.ColorCameraProperties.SensorResolution.THE_1080_P
         self.previous_frames : deque[np.ndarray] = deque(maxlen=self.number_of_frames_to_average)
 
-        self.CS_resolution = (498, 280)
-        self.CS_compression_quality = 92
+        self.CS_resolution = (426, 240)
+        self.CS_compression_quality = 8
         ### ------------ For HDS --------------
         #For Nav it should be the other way around
         subpixel = False
@@ -358,7 +358,7 @@ class OakDStereoCamera:
         if self.rgb_queue is None:
             return None
 
-        encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 25]
+        encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 95] #used internally so there are no bandwidth issues.
 
         try:
             rgb_packet = self.rgb_queue.tryGet()
