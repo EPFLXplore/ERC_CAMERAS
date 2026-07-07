@@ -97,7 +97,7 @@ class GstCameraBridgeNode(Node):
     def __init__(self):
         super().__init__("gst_camera_bridge")
         self.declare_parameter("mode", "nav")  # "nav" or "cs"
-        self.declare_parameter("host", "169.254.55.165") # .166 Control Station NUC
+        self.declare_parameter("host", "169.254.55.166") # .166 Control Station NUC
         self.declare_parameter("base_port", 5000)
         self.declare_parameter("width", 428)
         self.declare_parameter("height", 240)

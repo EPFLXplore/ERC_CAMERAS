@@ -99,7 +99,7 @@ exec ros2 service call "$S" std_srvs/srv/SetBool '{{data: true}}'
 def generate_launch_description():
     declare_gcs_ip = DeclareLaunchArgument(
     "gcs_ip",
-    default_value="169.254.55.164", # .166 is IPv4 of CS NUC
+    default_value="169.254.55.166", # .166 is IPv4 of CS NUC
     description="Control station IP address",
     )
 

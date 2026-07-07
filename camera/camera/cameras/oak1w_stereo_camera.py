@@ -130,10 +130,22 @@ class Oak1WStereoCamera:
 
         width = int(self.node.get_parameter("x").value)
         height = int(self.node.get_parameter("y").value)
-        g = gcd(height, 1080)
+
+        NATIVE_W, NATIVE_H = 1920, 1080  # THE_1080_P sensor resolution
+
+        g = gcd(height, NATIVE_H)
         scale_num = height // g
-        scale_den = 1080 // g
+        scale_den = NATIVE_H // g
         cam_rgb.setIspScale(scale_num, scale_den)
+
+        isp_width = (NATIVE_W * scale_num) // scale_den
+        if width != isp_width:
+            self.node.get_logger().warn(
+                f"Requested width={width} does not match the {NATIVE_W}:{NATIVE_H} "
+                f"aspect ratio at height={height} (expected {isp_width}); "
+                f"using {isp_width} instead of cropping the frame."
+            )
+            width = isp_width
 
         cam_rgb.setVideoSize(width, height)
         cam_rgb.setFps(self.node.fps)
