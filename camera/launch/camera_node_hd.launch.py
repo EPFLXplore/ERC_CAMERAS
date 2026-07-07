@@ -27,7 +27,7 @@ def generate_launch_description():
 
     declare_gst_host = DeclareLaunchArgument(
         "gst_host",
-        default_value="169.254.55.164",
+        default_value="169.254.55.166",
         description="Control station IP address for the HD GStreamer video bridge.",
     )
     declare_gst_port = DeclareLaunchArgument(
