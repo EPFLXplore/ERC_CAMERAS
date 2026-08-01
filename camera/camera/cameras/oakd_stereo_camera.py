@@ -17,6 +17,16 @@ class OakDStereoCamera:
         self.node = node
         self.serial_number = self.node.devrule
 
+        RGB_RESOLUTION_MAP = {
+            "1080P": dai.ColorCameraProperties.SensorResolution.THE_1080_P,
+            "4K": dai.ColorCameraProperties.SensorResolution.THE_4_K,
+        }
+
+        MONO_RESOLUTION_MAP = {
+            "400P": dai.MonoCameraProperties.SensorResolution.THE_400_P,
+            "480P": dai.MonoCameraProperties.SensorResolution.THE_480_P,
+        }
+
         self.node.declare_parameter("info", self.node.default)
         self.info = self.node.get_parameter("info").get_parameter_value().string_value
 
@@ -33,6 +43,16 @@ class OakDStereoCamera:
         self.node.declare_parameter("topic_internal_pub", self.node.default)
         self.topic_internal_pub = (
             self.node.get_parameter("topic_internal_pub").get_parameter_value().string_value
+        )
+
+        self.node.declare_parameter("rgb_resolution", self.node.default)
+        self.rgbResolution = (
+            self.node.get_parameter("rgb_resolution").get_parameter_value().string_value
+        )
+
+        self.node.declare_parameter("mono_resolution", self.node.default)
+        self.monoResolution = (
+            self.node.get_parameter("mono_resolution").get_parameter_value().string_value
         )
 
         self.node.declare_parameter("depth_avg", self.node.default)
@@ -114,21 +134,38 @@ class OakDStereoCamera:
             xout.input.setBlocking(False)
             xout.input.setQueueSize(1)
 
+        self.pipeline.setXLinkChunkSize(0)  # 0 = unlimited, no chunking
+
         ## ---------- Camera parameters ----------
         self.rgbCamSocket = dai.CameraBoardSocket.CAM_A
-        monoResolution = dai.MonoCameraProperties.SensorResolution.THE_480_P
-        #rgbResolution = dai.ColorCameraProperties.SensorResolution.THE_4_K # at 30 fps induces delay
-        rgbResolution = dai.ColorCameraProperties.SensorResolution.THE_1080_P
+        # monoResolution = dai.MonoCameraProperties.SensorResolution.THE_480_P
+        # rgbResolution = dai.ColorCameraProperties.SensorResolution.THE_4_K # at 30 fps induces delay
+        # rgbResolution = dai.ColorCameraProperties.SensorResolution.THE_1080_P
+        if self.rgbResolution in RGB_RESOLUTION_MAP:
+            rgbResolution = RGB_RESOLUTION_MAP[self.rgbResolution]
+        else:
+            self.node.get_logger().error(f"RGB Resolution {self.rgbResolution} not in the map, using default 1080P")
+            rgbResolution = dai.ColorCameraProperties.SensorResolution.THE_1080_P
+        
+        if self.monoResolution in MONO_RESOLUTION_MAP:
+            monoResolution = MONO_RESOLUTION_MAP[self.monoResolution]
+        else:
+            self.node.get_logger().error(f"Mono Resolution {self.monoResolution} not in the map, using default 480P")
+            monoResolution = dai.MonoCameraProperties.SensorResolution.THE_480_P
+        
         self.previous_frames : deque[np.ndarray] = deque(maxlen=self.number_of_frames_to_average)
 
         self.CS_resolution = (512, 288)
         self.CS_compression_quality = 15   # now applied by the on-device MJPEG encoder
-        self.internal_quality = 95         # on-device MJPEG quality for internal feed
+        if rgbResolution == dai.ColorCameraProperties.SensorResolution.THE_4_K:
+            self.internal_quality = 80         # on-device MJPEG quality for internal feed
+        else:
+            self.internal_quality = 95         # on-device MJPEG quality for internal feed
 
         ### ------------ For HDS --------------
         #For Nav it should be the other way around
-        subpixel = False
-        extended_disparity = not subpixel #incompatible with subpixel, better for close objects but worse for long range (over 3m)
+        extended_disparity = True # divides minimum depth by 2
+        subpixel = not extended_disparity #incompatible with extended_disparity, better for long range (over 3m) but worse for close objects
         self.IRdot = 0 #Only useful indoors and if Oak-D pro is used (between 0 and 1)
         ### -----------------------------------
         ## ---------- End parameters ----------
@@ -165,6 +202,7 @@ class OakDStereoCamera:
         self.camRgb.setBoardSocket(self.rgbCamSocket)
         self.camRgb.setResolution(rgbResolution)
         self.camRgb.setFps(self.node.fps)
+        #self.camRgb.setIspScale(1, 2)
         # Flip is done on-sensor now: frames arrive as JPEG on the host, so we
         # can no longer cv2.rotate them there. This flips both MJPEG streams.
         if self.flip_camera:
@@ -188,6 +226,7 @@ class OakDStereoCamera:
         )
 
         self.stereo.setDepthAlign(self.rgbCamSocket)
+
         if self.depth_res is not None:
             self.stereo.setOutputSize(
                 self.depth_res[0],
@@ -252,7 +291,9 @@ class OakDStereoCamera:
         self.depth_queue = None
         self._dev_lock = threading.Lock()
 
+        #TODO : Remove as we align in perception
         self.depth_frame = None
+        self.extrinsics = None
 
         # reconnect backoff
         self._reconnect_delay_s = 1.0
@@ -353,9 +394,8 @@ class OakDStereoCamera:
 
             try:
                 calib = self.device.readCalibration()
-                distortion_coefficients = calib.getDistortionCoefficients(
-                    dai.CameraBoardSocket.RGB
-                )
+                distortion_coefficients = calib.getDistortionCoefficients(self.rgbCamSocket)
+  
             except RuntimeError as e:
                 self.node.get_logger().error(f"Device disconnected while reading calibration: {e}")
                 self.device = None
@@ -366,40 +406,43 @@ class OakDStereoCamera:
                 return response
 
         if self.rgb_res is not None:
-            intrinsics = calib.getCameraIntrinsics(
-                dai.CameraBoardSocket.RGB, (self.rgb_res[0], self.rgb_res[1])
+            intrinsics = np.array(
+                calib.getCameraIntrinsics(self.rgbCamSocket, (self.rgb_res[0], self.rgb_res[1])),
+                dtype=np.float64,
             )
+
+            if (intrinsics[0][0] == 0 or intrinsics[1][1] == 0 or intrinsics[0][2] == 0 or intrinsics[1][2]== 0):
+                self.node.get_logger().warn("Camera intrinsics not found, using default values.")
+                # default factory setting for calibrations of OAK-D pro not calibrated by hand for 1920/1080 full baka scaled with resolution
+                response.fx = 1516.3 * self.rgb_res[0]/1920
+                response.fy = 1516.4 * self.rgb_res[1]/1080
+                response.cx = 949.3 * self.rgb_res[0]/1920
+                response.cy = 564.4 * self.rgb_res[1]/1080
+                response.distortion_coefficients = [1.23231707e+01, -1.15954918e+02, 7.17240968e-04, 1.20075652e-04, 4.35855652e+02, 1.20713158e+01, -1.14148094e+02, 4.28597443e+02, 0.00000000e+00, 0.00000000e+00, 0.00000000e+00, 0.00000000e+00, 1.37381395e-03, -5.79341940e-05]
+            
+            else:
+                self.node.get_logger().info("Camera intrinsics found, using them.")
+                self.node.get_logger().info(f"fx ={intrinsics[0][0]}, fy ={intrinsics[1][1]}, cx ={intrinsics[0][2]}, cy ={intrinsics[1][2]}")
+                response.fx = float(intrinsics[0][0])
+                response.fy = float(intrinsics[1][1])
+                response.cx = float(intrinsics[0][2])
+                response.cy = float(intrinsics[1][2])
+                response.distortion_coefficients = distortion_coefficients
 
             response.rgb_w = self.rgb_res[0]
             response.rgb_h = self.rgb_res[1]
+
         else:
-            self.node.get_logger().error("Failed to get intrasics, resolution not in map or not set")
+            self.node.get_logger().error("Failed to get intrinsics, resolution not in map or not set")
             return response
 
         if self.depth_res is not None:
             response.depth_w = self.depth_res[0]
             response.depth_h = self.depth_res[1]
+            response.depth_scale = 0.001
         else:
             self.node.get_logger().error("Depth resolution not in map or not set")
 
-        response.depth_scale = 0.001
-
-        if (intrinsics[0][0] == 0 or intrinsics[1][1] == 0 or intrinsics[0][2] == 0 or intrinsics[1][2] == 0):
-            self.node.get_logger().warn("Camera intrinsics not found, using default values.")
-            # default factory setting for calibrations of OAK-D pro not calibrated by hand for 1920/1080 full baka scaled with resolution
-            response.fx = 1516.3 * self.rgb_res[0]/1920
-            response.fy = 1516.4 * self.rgb_res[1]/1080
-            response.cx = 949.3 * self.rgb_res[0]/1920
-            response.cy = 564.4 * self.rgb_res[1]/1080
-            response.distortion_coefficients = [1.23231707e+01, -1.15954918e+02, 7.17240968e-04, 1.20075652e-04, 4.35855652e+02, 1.20713158e+01, -1.14148094e+02, 4.28597443e+02, 0.00000000e+00, 0.00000000e+00, 0.00000000e+00, 0.00000000e+00, 1.37381395e-03, -5.79341940e-05]
-        else:
-            self.node.get_logger().info("Camera intrinsics found, using them.")
-            self.node.get_logger().info(f"fx ={intrinsics[0][0]}, fy ={intrinsics[1][1]}, cx ={intrinsics[0][2]}, cy ={intrinsics[1][2]}")
-            response.fx = float(intrinsics[0][0])
-            response.fy = float(intrinsics[1][1])
-            response.cx = float(intrinsics[0][2])
-            response.cy = float(intrinsics[1][2])
-            response.distortion_coefficients = distortion_coefficients
 
         return response
 
@@ -485,6 +528,8 @@ class OakDStereoCamera:
             depth_frame = depth_packet.getFrame()
             depth_frame = cv2.rotate(depth_frame, cv2.ROTATE_180) if self.flip_camera else depth_frame
             depth_frame = np.ascontiguousarray(depth_frame)
+
+            # Unused as it's the topic for the raw depth
             #msg_depth = self.publish_image(depth_frame)
             #self.depth_pubs.publish(msg_depth)
 

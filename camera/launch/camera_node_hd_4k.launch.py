@@ -73,13 +73,13 @@ def generate_launch_description():
             {'info': rover_names['rover_hd_camera_info']}, # we concatenate the devrule
             {'depth_req': "/ROVER/depth_req_camera_hd_0"}, # To activate the depth
             {'state_depth': "/ROVER/state_depth_camera_hd_0"},
-            {'fps': 20},
-            {'fps_external': 20},
-            {'rgb_resolution': "1080P"},
+            {'fps': 8},
+            {'fps_external': 8},
+            {'rgb_resolution': "4K"},
             {'mono_resolution': "480P"},
             {'flip_camera': False},
-            {'fps_depth': 20},  
-            {'number_of_frames_to_average': 5}
+            {'fps_depth': 10},  
+            {'number_of_frames_to_average': 3}
         ],
     )
 
