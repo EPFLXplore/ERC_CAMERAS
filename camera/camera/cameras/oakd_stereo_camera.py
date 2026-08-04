@@ -10,6 +10,7 @@ from sensor_msgs.msg import CompressedImage, Image
 from custom_msg.srv import CameraParams
 from std_srvs.srv import SetBool
 from std_msgs.msg import Float32, Bool
+from custom_msg.msg import HDCameraResolution
 
 class OakDStereoCamera:
     def __init__(self, node):
@@ -17,12 +18,12 @@ class OakDStereoCamera:
         self.node = node
         self.serial_number = self.node.devrule
 
-        RGB_RESOLUTION_MAP = {
+        self.RGB_RESOLUTION_MAP = {
             "1080P": dai.ColorCameraProperties.SensorResolution.THE_1080_P,
             "4K": dai.ColorCameraProperties.SensorResolution.THE_4_K,
         }
 
-        MONO_RESOLUTION_MAP = {
+        self.MONO_RESOLUTION_MAP = {
             "400P": dai.MonoCameraProperties.SensorResolution.THE_400_P,
             "480P": dai.MonoCameraProperties.SensorResolution.THE_480_P,
         }
@@ -46,18 +47,23 @@ class OakDStereoCamera:
         )
 
         self.node.declare_parameter("rgb_resolution", self.node.default)
-        self.rgbResolution = (
+        self.rgbResolution_name = (
             self.node.get_parameter("rgb_resolution").get_parameter_value().string_value
         )
 
         self.node.declare_parameter("mono_resolution", self.node.default)
-        self.monoResolution = (
+        self.monoResolution_name = (
             self.node.get_parameter("mono_resolution").get_parameter_value().string_value
         )
 
         self.node.declare_parameter("depth_avg", self.node.default)
         self.depth_avg_topic_string = (
             self.node.get_parameter("depth_avg").get_parameter_value().string_value
+        )
+
+        self.node.declare_parameter("topic_resolution", self.node.default)
+        self.resolution_topic = (
+            self.node.get_parameter("topic_resolution").get_parameter_value().string_value
         )
 
         self.node.declare_parameter("fps_depth", 5)
@@ -94,6 +100,10 @@ class OakDStereoCamera:
             CameraParams, self.info + self.serial_number, self.camera_params_callback
         )
 
+        self.resolution_sub = self.node.create_subscription(
+            HDCameraResolution, self.resolution_topic, self.switch_resolution_callback, 10
+        )
+
         # ------------------- Publishers -------------------
         self.state_depth = self.node.create_publisher(Bool, self.state_depth_topic, 1)
         self.depth_pubs = self.node.create_publisher(
@@ -109,63 +119,30 @@ class OakDStereoCamera:
             CompressedImage, self.topic_internal_pub, qos_profile=self.node.qos_profile
         )
 
+        self.cam_params_switch_pub = self.node.create_publisher(
+            Bool, "/HD/camera/params_switch", qos_profile=self.node.qos_profile
+        )
+
         # ------------------- Device and pipeline init -------------------
-        self.pipeline = dai.Pipeline()
-
-        # Sources and Outputs
-        self.camRgb = self.pipeline.create(dai.node.ColorCamera)
-        left = self.pipeline.create(dai.node.MonoCamera)
-        right = self.pipeline.create(dai.node.MonoCamera)
-        self.stereo = self.pipeline.create(dai.node.StereoDepth)
-
-        rgbOut = self.pipeline.create(dai.node.XLinkOut)
-        rgbExtOut = self.pipeline.create(dai.node.XLinkOut)
-        depthOut = self.pipeline.create(dai.node.XLinkOut)
-
-        rgbOut.setStreamName("rgb")
-        rgbExtOut.setStreamName("rgb_ext")
-        depthOut.setStreamName("depth")
-
-        # LATENCY: device-side XLink queues default to blocking with ~8 frames
-        # buffered on the camera. That adds up to ~8 frames of standing delay.
-        # Non-blocking + size 1 means old frames are overwritten, so the host
-        # always receives the newest frame.
-        for xout in (rgbOut, rgbExtOut, depthOut):
-            xout.input.setBlocking(False)
-            xout.input.setQueueSize(1)
-
-        self.pipeline.setXLinkChunkSize(0)  # 0 = unlimited, no chunking
+        self.pipeline = dai.Pipeline() # Pipeline built with _build_pipeline()
 
         ## ---------- Camera parameters ----------
         self.rgbCamSocket = dai.CameraBoardSocket.CAM_A
-        # monoResolution = dai.MonoCameraProperties.SensorResolution.THE_480_P
-        # rgbResolution = dai.ColorCameraProperties.SensorResolution.THE_4_K # at 30 fps induces delay
-        # rgbResolution = dai.ColorCameraProperties.SensorResolution.THE_1080_P
-        if self.rgbResolution in RGB_RESOLUTION_MAP:
-            rgbResolution = RGB_RESOLUTION_MAP[self.rgbResolution]
-        else:
-            self.node.get_logger().error(f"RGB Resolution {self.rgbResolution} not in the map, using default 1080P")
-            rgbResolution = dai.ColorCameraProperties.SensorResolution.THE_1080_P
-        
-        if self.monoResolution in MONO_RESOLUTION_MAP:
-            monoResolution = MONO_RESOLUTION_MAP[self.monoResolution]
-        else:
-            self.node.get_logger().error(f"Mono Resolution {self.monoResolution} not in the map, using default 480P")
-            monoResolution = dai.MonoCameraProperties.SensorResolution.THE_480_P
+        self.set_resolution_from_name() #Converts string to dai.CameraProperties.SensorResolution
         
         self.previous_frames : deque[np.ndarray] = deque(maxlen=self.number_of_frames_to_average)
 
         self.CS_resolution = (512, 288)
         self.CS_compression_quality = 15   # now applied by the on-device MJPEG encoder
-        if rgbResolution == dai.ColorCameraProperties.SensorResolution.THE_4_K:
+        if self.rgbResolution == dai.ColorCameraProperties.SensorResolution.THE_4_K:
             self.internal_quality = 80         # on-device MJPEG quality for internal feed
         else:
             self.internal_quality = 95         # on-device MJPEG quality for internal feed
 
         ### ------------ For HDS --------------
         #For Nav it should be the other way around
-        extended_disparity = True # divides minimum depth by 2
-        subpixel = not extended_disparity #incompatible with extended_disparity, better for long range (over 3m) but worse for close objects
+        self.extended_disparity = True # divides minimum depth by 2
+        self.subpixel = not self.extended_disparity #incompatible with extended_disparity, better for long range (over 3m) but worse for close objects
         self.IRdot = 0 #Only useful indoors and if Oak-D pro is used (between 0 and 1)
         ### -----------------------------------
         ## ---------- End parameters ----------
@@ -173,127 +150,23 @@ class OakDStereoCamera:
         self.rgb_res = None
         self.depth_res = None
 
-        RESOLUTION_MAP = {
+        self.RESOLUTION_MAP = {
             dai.MonoCameraProperties.SensorResolution.THE_400_P: (640, 400),
             dai.MonoCameraProperties.SensorResolution.THE_480_P: (640, 480),
             dai.ColorCameraProperties.SensorResolution.THE_1080_P: (1920, 1080),
             dai.ColorCameraProperties.SensorResolution.THE_4_K: (3840, 2160),
-            dai.ColorCameraProperties.SensorResolution.THE_12_MP: (4056, 3040),
-            dai.ColorCameraProperties.SensorResolution.THE_13_MP: (4208, 3120),
         }
         #affect the resolution size to rgb_res and depth_res
-        if rgbResolution in RESOLUTION_MAP:
-            self.rgb_res = RESOLUTION_MAP[rgbResolution]
-        else:
-            self.node.get_logger().error(
-                "RGB Resolution not in the map"
-            )
+        self.set_resolution()
 
-        if monoResolution in RESOLUTION_MAP:
-            self.depth_res = RESOLUTION_MAP[monoResolution]
-        else:
-            self.node.get_logger().error(
-                "Depth Resolution not in the map"
-            )
-
-
-        #Properties
-        ## RGB Camera
-        self.camRgb.setBoardSocket(self.rgbCamSocket)
-        self.camRgb.setResolution(rgbResolution)
-        self.camRgb.setFps(self.node.fps)
-        #self.camRgb.setIspScale(1, 2)
-        # Flip is done on-sensor now: frames arrive as JPEG on the host, so we
-        # can no longer cv2.rotate them there. This flips both MJPEG streams.
-        if self.flip_camera:
-            self.camRgb.setImageOrientation(
-                dai.CameraImageOrientation.ROTATE_180_DEG
-            )
-        self.node.get_logger().info(f"RGB camera set to {rgbResolution} at {self.node.fps} FPS")
-
-        ## Mono Cameras
-        left.setResolution(monoResolution)
-        left.setCamera("left")
-        left.setFps(self.fps_depth)
-
-        right.setResolution(monoResolution)
-        right.setCamera("right")
-        right.setFps(self.fps_depth)
-
-        ## Stereo Properties
-        self.stereo.setDefaultProfilePreset(
-            dai.node.StereoDepth.PresetMode.HIGH_DENSITY
-        )
-
-        self.stereo.setDepthAlign(self.rgbCamSocket)
-
-        if self.depth_res is not None:
-            self.stereo.setOutputSize(
-                self.depth_res[0],
-                self.depth_res[1]
-            )
-        else:
-            self.node.get_logger().error(
-                "Resolution doesn't match predefined output size"
-            )
-
-        self.stereo.setRectification(True)
-        self.stereo.setLeftRightCheck(True)
-        self.stereo.setExtendedDisparity(extended_disparity)
-        self.stereo.setSubpixel(subpixel)
-
-        ## Hardware encoders (RVC2 MJPEG block, ~zero host cost)
-        # Internal full-res feed: video output (NV12) -> MJPEG @ quality 95
-        self.videoEnc = self.pipeline.create(dai.node.VideoEncoder)
-        self.videoEnc.setDefaultProfilePreset(
-            self.node.fps, dai.VideoEncoderProperties.Profile.MJPEG
-        )
-        self.videoEnc.setQuality(self.internal_quality)
-        # LATENCY: small frame pool so the encoder can't hoard frames either.
-        self.videoEnc.setNumFramesPool(2)
-
-        # External low-res feed: downscale on device, then MJPEG @ quality 15
-        self.manip = self.pipeline.create(dai.node.ImageManip)
-        self.manip.initialConfig.setResize(
-            self.CS_resolution[0], self.CS_resolution[1]
-        )
-        self.manip.initialConfig.setFrameType(dai.RawImgFrame.Type.NV12)
-        self.manip.setMaxOutputFrameSize(
-            self.CS_resolution[0] * self.CS_resolution[1] * 3 // 2
-        )
-        # LATENCY: don't let the manip node buffer/backpressure either.
-        self.manip.inputImage.setBlocking(False)
-        self.manip.inputImage.setQueueSize(1)
-
-        self.extEnc = self.pipeline.create(dai.node.VideoEncoder)
-        self.extEnc.setDefaultProfilePreset(
-            self.fps_external, dai.VideoEncoderProperties.Profile.MJPEG
-        )
-        self.extEnc.setQuality(self.CS_compression_quality)
-        self.extEnc.setNumFramesPool(2)
-
-        # linking
-        self.camRgb.video.link(self.videoEnc.input)          # NV12 required by encoder
-        self.videoEnc.bitstream.link(rgbOut.input)           # JPEG bytes -> "rgb"
-
-        self.camRgb.video.link(self.manip.inputImage)
-        self.manip.out.link(self.extEnc.input)
-        self.extEnc.bitstream.link(rgbExtOut.input)          # JPEG bytes -> "rgb_ext"
-
-        left.out.link(self.stereo.left)
-        right.out.link(self.stereo.right)
-        self.stereo.depth.link(depthOut.input)
+        self._build_pipeline()
 
         # ------------------- Runtime state -------------------
         self.device = None
         self.rgb_queue = None
         self.rgb_ext_queue = None
         self.depth_queue = None
-        self._dev_lock = threading.Lock()
-
-        #TODO : Remove as we align in perception
-        self.depth_frame = None
-        self.extrinsics = None
+        self._dev_lock = threading.RLock()
 
         # reconnect backoff
         self._reconnect_delay_s = 1.0
@@ -372,6 +245,17 @@ class OakDStereoCamera:
     def stop(self):
         self.close()
 
+    def switch_resolution_callback(self, msg: HDCameraResolution):
+        if msg.rgb_resolution != self.rgbResolution_name:
+            with self._dev_lock:
+                self.close()
+                self._update_pipeline(msg.rgb_resolution, msg.mono_resolution,
+                                    msg.fps_depth, msg.fps_external,
+                                    msg.fps_internal, msg.number_of_frames_to_average)
+                self._open_device()
+                self.cam_params_switch_pub.publish(Bool(data=True))
+
+    #---------------------------- Callbacks -------------------
     def depth_callback(self, request, response):
         self.depth_mode = request.data
         response.success = True
@@ -447,6 +331,7 @@ class OakDStereoCamera:
         return response
 
     @staticmethod
+    #---------------------------- Publishing -------------------
     def _latest(queue):
         """Drain a queue and return only the freshest packet (or None)."""
         packets = queue.tryGetAll()
@@ -560,6 +445,10 @@ class OakDStereoCamera:
                 # getQueueEvents blocks until a frame actually arrives, so the
                 # camera drives the loop (no sleep() jitter, no missed frames).
                 # The 100 ms timeout keeps the stop flags responsive.
+                if self.device is None:
+                    time.sleep(0.1)
+                    continue
+
                 try:
                     events = self.device.getQueueEvents(
                         ("rgb", "rgb_ext", "depth"),
@@ -603,3 +492,170 @@ class OakDStereoCamera:
 
         finally:
             self.close()
+
+    #---------------------------- Pipeline management -------------------
+    def _update_pipeline(self, rgb_resolution, mono_resolution, fps_depth, fps_external, fps_internal, number_of_frames_to_average):
+        """Rebuild the pipeline with the current resolution settings."""
+        self.rgbResolution_name = rgb_resolution
+        self.monoResolution_name = mono_resolution
+        self.number_of_frames_to_average = number_of_frames_to_average
+        self.fps_depth = fps_depth
+        self.fps_external = fps_external
+        self.node.fps = fps_internal
+        self.node.get_logger().info(f"Switching camera resolution to RGB: {rgb_resolution}, Mono: {mono_resolution}")
+        self.previous_frames : deque[np.ndarray] = deque(maxlen=self.number_of_frames_to_average)
+        self.set_resolution_from_name()
+        self.set_resolution()
+        if self.rgbResolution == dai.ColorCameraProperties.SensorResolution.THE_4_K:
+            self.internal_quality = 80         # on-device MJPEG quality for internal feed
+        else:
+            self.internal_quality = 95         # on-device MJPEG quality for internal feed
+
+        self._build_pipeline()
+        
+    def set_resolution_from_name(self):
+        """Converts string to dai.CameraProperties.SensorResolution"""
+        if self.rgbResolution_name in self.RGB_RESOLUTION_MAP:
+            self.rgbResolution = self.RGB_RESOLUTION_MAP[self.rgbResolution_name]
+        else:
+            self.node.get_logger().error(f"RGB Resolution {self.rgbResolution_name} not in the map, using default 1080P")
+            self.rgbResolution = dai.ColorCameraProperties.SensorResolution.THE_1080_P
+                
+        if self.monoResolution_name in self.MONO_RESOLUTION_MAP:
+            self.monoResolution = self.MONO_RESOLUTION_MAP[self.monoResolution_name]
+        else:
+            self.node.get_logger().error(f"Mono Resolution {self.monoResolution_name} not in the map, using default 480P")
+            self.monoResolution = dai.MonoCameraProperties.SensorResolution.THE_480_P
+
+    def set_resolution(self):
+        """Sets the resolution size from the resolution (dai.CameraProperties.SensorResolution)"""
+        if self.rgbResolution in self.RESOLUTION_MAP:
+            self.rgb_res = self.RESOLUTION_MAP[self.rgbResolution]
+        else:
+            self.node.get_logger().error(
+                "RGB Resolution not in the map"
+            )
+        
+        if self.monoResolution in self.RESOLUTION_MAP:
+            self.depth_res = self.RESOLUTION_MAP[self.monoResolution]
+        else:
+            self.node.get_logger().error(
+                "Depth Resolution not in the map"
+            )
+        self.node.get_logger().info(f"DEBUG : Resolution set to RGB: {self.rgb_res}, Depth: {self.depth_res}")
+
+    
+    def _build_pipeline(self):
+        """(Re)build the entire pipeline graph from scratch using current
+        self.rgbResolution / self.monoResolution / fps settings.
+        Must be called before every _open_device(), including on resolution switch."""
+        self.pipeline = dai.Pipeline()
+
+        # Sources and Outputs
+        self.camRgb = self.pipeline.create(dai.node.ColorCamera)
+        self.left = self.pipeline.create(dai.node.MonoCamera)
+        self.right = self.pipeline.create(dai.node.MonoCamera)
+        self.stereo = self.pipeline.create(dai.node.StereoDepth)
+
+        rgbOut = self.pipeline.create(dai.node.XLinkOut)
+        rgbExtOut = self.pipeline.create(dai.node.XLinkOut)
+        depthOut = self.pipeline.create(dai.node.XLinkOut)
+
+        rgbOut.setStreamName("rgb")
+        rgbExtOut.setStreamName("rgb_ext")
+        depthOut.setStreamName("depth")
+
+        # LATENCY: device-side XLink queues default to blocking with ~8 frames
+        # buffered on the camera. That adds up to ~8 frames of standing delay.
+        # Non-blocking + size 1 means old frames are overwritten, so the host
+        # always receives the newest frame.
+        for xout in (rgbOut, rgbExtOut, depthOut):
+            xout.input.setBlocking(False)
+            xout.input.setQueueSize(1)
+
+        self.pipeline.setXLinkChunkSize(0) # 0 = unlimited, no chunking, recommended for latency
+
+        ## ---------- Camera parameters ----------
+        self.camRgb.setBoardSocket(self.rgbCamSocket)
+        self.camRgb.setResolution(self.rgbResolution)
+        self.camRgb.setFps(self.node.fps)
+        # Flip is done on-sensor now: frames arrive as JPEG on the host, so we
+        # can no longer cv2.rotate them there. This flips both MJPEG streams.
+        if self.flip_camera:
+            self.camRgb.setImageOrientation(
+                dai.CameraImageOrientation.ROTATE_180_DEG
+            )
+        self.node.get_logger().info(f"RGB camera set to {self.rgbResolution} at {self.node.fps} FPS")
+
+        ## Mono Cameras
+        self.left.setResolution(self.monoResolution)
+        self.left.setCamera("left")
+        self.left.setFps(self.fps_depth)
+
+        self.right.setResolution(self.monoResolution)
+        self.right.setCamera("right")
+        self.right.setFps(self.fps_depth)
+
+        ## Stereo Properties
+        self.stereo.setDefaultProfilePreset(
+            dai.node.StereoDepth.PresetMode.HIGH_DENSITY
+        )
+
+        self.stereo.setDepthAlign(self.rgbCamSocket)
+
+        if self.depth_res is not None:
+            self.stereo.setOutputSize(
+                self.depth_res[0],
+                self.depth_res[1]
+            )
+        else:
+            self.node.get_logger().error(
+                "Resolution doesn't match predefined output size"
+            )
+
+        self.stereo.setRectification(True)
+        self.stereo.setLeftRightCheck(True)
+        self.stereo.setExtendedDisparity(self.extended_disparity)   # divides minimum depth by 2
+        self.stereo.setSubpixel(self.subpixel)           # incompatible with extended_disparity, better for long range (over 3m) but worse for close objects
+
+        ## Hardware encoders (RVC2 MJPEG block, ~zero host cost)
+        # Internal full-res feed: video output (NV12) -> MJPEG @ quality 95
+        self.videoEnc = self.pipeline.create(dai.node.VideoEncoder)
+        self.videoEnc.setDefaultProfilePreset(
+            self.node.fps, dai.VideoEncoderProperties.Profile.MJPEG
+        )
+        self.videoEnc.setQuality(self.internal_quality)
+        # LATENCY: small frame pool so the encoder can't hoard frames either.
+        self.videoEnc.setNumFramesPool(2)
+
+        # External low-res feed: downscale on device, then MJPEG @ quality 15
+        self.manip = self.pipeline.create(dai.node.ImageManip)
+        self.manip.initialConfig.setResize(
+            self.CS_resolution[0], self.CS_resolution[1]
+        )
+        self.manip.initialConfig.setFrameType(dai.RawImgFrame.Type.NV12)
+        self.manip.setMaxOutputFrameSize(
+            self.CS_resolution[0] * self.CS_resolution[1] * 3 // 2
+        )
+        # LATENCY: don't let the manip node buffer/backpressure either.
+        self.manip.inputImage.setBlocking(False)
+        self.manip.inputImage.setQueueSize(1)
+
+        self.extEnc = self.pipeline.create(dai.node.VideoEncoder)
+        self.extEnc.setDefaultProfilePreset(
+            self.fps_external, dai.VideoEncoderProperties.Profile.MJPEG
+        )
+        self.extEnc.setQuality(self.CS_compression_quality)
+        self.extEnc.setNumFramesPool(2)
+
+        # linking
+        self.camRgb.video.link(self.videoEnc.input)          # NV12 required by encoder
+        self.videoEnc.bitstream.link(rgbOut.input)           # JPEG bytes -> "rgb"
+
+        self.camRgb.video.link(self.manip.inputImage)
+        self.manip.out.link(self.extEnc.input)
+        self.extEnc.bitstream.link(rgbExtOut.input)          # JPEG bytes -> "rgb_ext"
+
+        self.left.out.link(self.stereo.left)
+        self.right.out.link(self.stereo.right)
+        self.stereo.depth.link(depthOut.input)

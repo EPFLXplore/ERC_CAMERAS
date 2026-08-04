@@ -68,6 +68,7 @@ def generate_launch_description():
             {'topic_pub': rover_names['rover_hd_rgb_feed']},
             {'depth': "/ROVER/depth_camera_hd_0"},
             {'depth_avg' : rover_names['rover_hd_depth_avg']},
+            {'topic_resolution': hd_names['hd_camera_resolution']},
             {'bw_pub': "/HD/bw_camera_hd_0"}, 
             {'devrule': ""},  # serial number written on the back of the camera # Unused
             {'info': rover_names['rover_hd_camera_info']}, # we concatenate the devrule
