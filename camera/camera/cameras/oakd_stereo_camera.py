@@ -9,8 +9,7 @@ import threading
 from sensor_msgs.msg import CompressedImage, Image
 from custom_msg.srv import CameraParams
 from std_srvs.srv import SetBool
-from std_msgs.msg import Float32, Bool
-from custom_msg.msg import HDCameraResolution
+from std_msgs.msg import Float32, Bool, String
 
 class OakDStereoCamera:
     def __init__(self, node):
@@ -27,6 +26,9 @@ class OakDStereoCamera:
             "400P": dai.MonoCameraProperties.SensorResolution.THE_400_P,
             "480P": dai.MonoCameraProperties.SensorResolution.THE_480_P,
         }
+
+        self.string_array = ["", ""]
+        self.int_array = [0, 0]
 
         self.node.declare_parameter("info", self.node.default)
         self.info = self.node.get_parameter("info").get_parameter_value().string_value
@@ -46,14 +48,14 @@ class OakDStereoCamera:
             self.node.get_parameter("topic_internal_pub").get_parameter_value().string_value
         )
 
-        self.node.declare_parameter("rgb_resolution", self.node.default)
+        self.node.declare_parameter("rgb_resolution", self.string_array)
         self.rgbResolution_name = (
-            self.node.get_parameter("rgb_resolution").get_parameter_value().string_value
+            self.node.get_parameter("rgb_resolution").get_parameter_value().string_array_value
         )
 
-        self.node.declare_parameter("mono_resolution", self.node.default)
+        self.node.declare_parameter("mono_resolution", self.string_array)
         self.monoResolution_name = (
-            self.node.get_parameter("mono_resolution").get_parameter_value().string_value
+            self.node.get_parameter("mono_resolution").get_parameter_value().string_array_value
         )
 
         self.node.declare_parameter("depth_avg", self.node.default)
@@ -66,19 +68,19 @@ class OakDStereoCamera:
             self.node.get_parameter("topic_resolution").get_parameter_value().string_value
         )
 
-        self.node.declare_parameter("fps_depth", 5)
+        self.node.declare_parameter("fps_depth", self.int_array)
         self.fps_depth = (
-            self.node.get_parameter("fps_depth").get_parameter_value().integer_value
+            self.node.get_parameter("fps_depth").get_parameter_value().integer_array_value
         )
 
-        self.node.declare_parameter("fps_external", 20)
+        self.node.declare_parameter("fps_external", self.int_array)
         self.fps_external = (
-            self.node.get_parameter("fps_external").get_parameter_value().integer_value
+            self.node.get_parameter("fps_external").get_parameter_value().integer_array_value
         )
 
-        self.node.declare_parameter("number_of_frames_to_average", 1)
+        self.node.declare_parameter("number_of_frames_to_average", self.int_array)
         self.number_of_frames_to_average = (
-            self.node.get_parameter("number_of_frames_to_average").get_parameter_value().integer_value
+            self.node.get_parameter("number_of_frames_to_average").get_parameter_value().integer_array_value
         )
 
         self.depth_change = self.node.create_service(
@@ -96,12 +98,22 @@ class OakDStereoCamera:
             self.node.get_parameter("flip_camera").get_parameter_value().bool_value
         )
 
+        self.node.declare_parameter("current_resolution", "1080P")
+        current_resolution = (
+            self.node.get_parameter("current_resolution").get_parameter_value().string_value
+        )
+
+        self.node.declare_parameter("fps_internal", self.int_array)
+        self.fps_internal = (
+            self.node.get_parameter("fps_internal").get_parameter_value().integer_array_value
+        )
+
         self.camera_info_service = self.node.create_service(
             CameraParams, self.info + self.serial_number, self.camera_params_callback
         )
 
         self.resolution_sub = self.node.create_subscription(
-            HDCameraResolution, self.resolution_topic, self.switch_resolution_callback, 10
+            String, self.resolution_topic, self.switch_resolution_callback, 10
         )
 
         # ------------------- Publishers -------------------
@@ -128,16 +140,19 @@ class OakDStereoCamera:
 
         ## ---------- Camera parameters ----------
         self.rgbCamSocket = dai.CameraBoardSocket.CAM_A
+        self._set_current_resolution(current_resolution)
+        self.node.get_logger().info(f"Current resolution set to {self.current}")
+        self.node.get_logger().info(f"RGB Resolution name: {self.rgbResolution_name}")
         self.set_resolution_from_name() #Converts string to dai.CameraProperties.SensorResolution
         
-        self.previous_frames : deque[np.ndarray] = deque(maxlen=self.number_of_frames_to_average)
+        self.previous_frames : deque[np.ndarray] = deque(maxlen=self.number_of_frames_to_average[self.current])
 
         self.CS_resolution = (512, 288)
         self.CS_compression_quality = 15   # now applied by the on-device MJPEG encoder
         if self.rgbResolution == dai.ColorCameraProperties.SensorResolution.THE_4_K:
-            self.internal_quality = 80         # on-device MJPEG quality for internal feed
+            self.internal_quality = 90  # limit value before fps drop
         else:
-            self.internal_quality = 95         # on-device MJPEG quality for internal feed
+            self.internal_quality = 95  # default value
 
         ### ------------ For HDS --------------
         #For Nav it should be the other way around
@@ -245,13 +260,11 @@ class OakDStereoCamera:
     def stop(self):
         self.close()
 
-    def switch_resolution_callback(self, msg: HDCameraResolution):
-        if msg.rgb_resolution != self.rgbResolution_name:
+    def switch_resolution_callback(self, msg: String):
+        if msg.data != self.rgbResolution_name[self.current]:
             with self._dev_lock:
                 self.close()
-                self._update_pipeline(msg.rgb_resolution, msg.mono_resolution,
-                                    msg.fps_depth, msg.fps_external,
-                                    msg.fps_internal, msg.number_of_frames_to_average)
+                self._update_pipeline(msg)
                 self._open_device()
                 self.cam_params_switch_pub.publish(Bool(data=True))
 
@@ -467,8 +480,8 @@ class OakDStereoCamera:
                         # Publish external feed at the requested average FPS.
                         # Counter increments per ext frame received (camera fps),
                         # publishing fps_external out of every node.fps frames.
-                        external_c += self.fps_external
-                        if external_c >= self.node.fps:
+                        external_c += self.fps_external[self.current]
+                        if external_c >= self.fps_internal[self.current]:
                             bytes_rgb, rgb_packet_state = self.publish_rgb_external()
                             if rgb_packet_state:
                                 current_time = time.time()
@@ -477,7 +490,7 @@ class OakDStereoCamera:
                                 )
                                 previous_time = current_time
                                 self.node.cam_bw.publish(bw)
-                            external_c -= self.node.fps
+                            external_c -= self.fps_internal[self.current]
                         else:
                             # Drop this ext frame so the topic holds fps_external
                             try:
@@ -494,37 +507,37 @@ class OakDStereoCamera:
             self.close()
 
     #---------------------------- Pipeline management -------------------
-    def _update_pipeline(self, rgb_resolution, mono_resolution, fps_depth, fps_external, fps_internal, number_of_frames_to_average):
+    def _set_current_resolution(self, resolution):
+        if resolution == "1080P":
+            self.current = 0
+        elif resolution == "4K":
+            self.current = 1
+        else:
+            self.node.get_logger().error(f"Unknown resolution {resolution}, defaulting to 1080P")
+            self.current = 0
+
+    def _update_pipeline(self, rgb_resolution):
         """Rebuild the pipeline with the current resolution settings."""
-        self.rgbResolution_name = rgb_resolution
-        self.monoResolution_name = mono_resolution
-        self.number_of_frames_to_average = number_of_frames_to_average
-        self.fps_depth = fps_depth
-        self.fps_external = fps_external
-        self.node.fps = fps_internal
-        self.node.get_logger().info(f"Switching camera resolution to RGB: {rgb_resolution}, Mono: {mono_resolution}")
-        self.previous_frames : deque[np.ndarray] = deque(maxlen=self.number_of_frames_to_average)
+        self._set_current_resolution(rgb_resolution.data)
+        self.node.get_logger().info(f"Switching camera resolution to RGB: {self.rgbResolution_name[self.current]}, Mono: {self.monoResolution_name[self.current]}")
+        self.previous_frames : deque[np.ndarray] = deque(maxlen=self.number_of_frames_to_average[self.current])
         self.set_resolution_from_name()
         self.set_resolution()
-        if self.rgbResolution == dai.ColorCameraProperties.SensorResolution.THE_4_K:
-            self.internal_quality = 80         # on-device MJPEG quality for internal feed
-        else:
-            self.internal_quality = 95         # on-device MJPEG quality for internal feed
 
         self._build_pipeline()
         
     def set_resolution_from_name(self):
         """Converts string to dai.CameraProperties.SensorResolution"""
-        if self.rgbResolution_name in self.RGB_RESOLUTION_MAP:
-            self.rgbResolution = self.RGB_RESOLUTION_MAP[self.rgbResolution_name]
+        if self.rgbResolution_name[self.current] in self.RGB_RESOLUTION_MAP:
+            self.rgbResolution = self.RGB_RESOLUTION_MAP[self.rgbResolution_name[self.current]]
         else:
-            self.node.get_logger().error(f"RGB Resolution {self.rgbResolution_name} not in the map, using default 1080P")
+            self.node.get_logger().error(f"RGB Resolution {self.rgbResolution_name[self.current]} not in the map, using default 1080P")
             self.rgbResolution = dai.ColorCameraProperties.SensorResolution.THE_1080_P
                 
-        if self.monoResolution_name in self.MONO_RESOLUTION_MAP:
-            self.monoResolution = self.MONO_RESOLUTION_MAP[self.monoResolution_name]
+        if self.monoResolution_name[self.current] in self.MONO_RESOLUTION_MAP:
+            self.monoResolution = self.MONO_RESOLUTION_MAP[self.monoResolution_name[self.current]]
         else:
-            self.node.get_logger().error(f"Mono Resolution {self.monoResolution_name} not in the map, using default 480P")
+            self.node.get_logger().error(f"Mono Resolution {self.monoResolution_name[self.current]} not in the map, using default 480P")
             self.monoResolution = dai.MonoCameraProperties.SensorResolution.THE_480_P
 
     def set_resolution(self):
@@ -542,7 +555,6 @@ class OakDStereoCamera:
             self.node.get_logger().error(
                 "Depth Resolution not in the map"
             )
-        self.node.get_logger().info(f"DEBUG : Resolution set to RGB: {self.rgb_res}, Depth: {self.depth_res}")
 
     
     def _build_pipeline(self):
@@ -578,23 +590,23 @@ class OakDStereoCamera:
         ## ---------- Camera parameters ----------
         self.camRgb.setBoardSocket(self.rgbCamSocket)
         self.camRgb.setResolution(self.rgbResolution)
-        self.camRgb.setFps(self.node.fps)
+        self.camRgb.setFps(self.fps_internal[self.current])
         # Flip is done on-sensor now: frames arrive as JPEG on the host, so we
         # can no longer cv2.rotate them there. This flips both MJPEG streams.
         if self.flip_camera:
             self.camRgb.setImageOrientation(
                 dai.CameraImageOrientation.ROTATE_180_DEG
             )
-        self.node.get_logger().info(f"RGB camera set to {self.rgbResolution} at {self.node.fps} FPS")
+        self.node.get_logger().info(f"RGB camera set to {self.rgbResolution} at {self.fps_internal[self.current]} FPS")
 
         ## Mono Cameras
         self.left.setResolution(self.monoResolution)
         self.left.setCamera("left")
-        self.left.setFps(self.fps_depth)
+        self.left.setFps(self.fps_depth[self.current])
 
         self.right.setResolution(self.monoResolution)
         self.right.setCamera("right")
-        self.right.setFps(self.fps_depth)
+        self.right.setFps(self.fps_depth[self.current])
 
         ## Stereo Properties
         self.stereo.setDefaultProfilePreset(
@@ -622,7 +634,7 @@ class OakDStereoCamera:
         # Internal full-res feed: video output (NV12) -> MJPEG @ quality 95
         self.videoEnc = self.pipeline.create(dai.node.VideoEncoder)
         self.videoEnc.setDefaultProfilePreset(
-            self.node.fps, dai.VideoEncoderProperties.Profile.MJPEG
+            self.fps_internal[self.current], dai.VideoEncoderProperties.Profile.MJPEG
         )
         self.videoEnc.setQuality(self.internal_quality)
         # LATENCY: small frame pool so the encoder can't hoard frames either.
@@ -643,7 +655,7 @@ class OakDStereoCamera:
 
         self.extEnc = self.pipeline.create(dai.node.VideoEncoder)
         self.extEnc.setDefaultProfilePreset(
-            self.fps_external, dai.VideoEncoderProperties.Profile.MJPEG
+            self.fps_external[self.current], dai.VideoEncoderProperties.Profile.MJPEG
         )
         self.extEnc.setQuality(self.CS_compression_quality)
         self.extEnc.setNumFramesPool(2)

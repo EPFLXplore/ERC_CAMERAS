@@ -56,6 +56,13 @@ def generate_launch_description():
         description="x264 target bitrate in kbps (adjustable at runtime via ros2 param set).",
     )
 
+    declare_current_resolution = DeclareLaunchArgument(
+        "start_resolution",
+        default_value="1080P",
+        description="Initial camera resolution (1080P or 4K), settable from the parent launch file.",
+    )
+
+    #Don't forget to update in kinematics/hd_fsm/hd_fsm/hds_interface
     camera_hd_gripper = Node(
         package='camera',
         executable='camera',
@@ -74,13 +81,14 @@ def generate_launch_description():
             {'info': rover_names['rover_hd_camera_info']}, # we concatenate the devrule
             {'depth_req': "/ROVER/depth_req_camera_hd_0"}, # To activate the depth
             {'state_depth': "/ROVER/state_depth_camera_hd_0"},
-            {'fps': 20},
-            {'fps_external': 20},
-            {'rgb_resolution': "1080P"},
-            {'mono_resolution': "480P"},
+            {'fps_internal': [30, 8]},
+            {'fps_external': [30, 8]},
+            {'rgb_resolution': ["1080P", "4K"]},
+            {'mono_resolution': ["480P", "480P"]},
             {'flip_camera': False},
-            {'fps_depth': 20},  
-            {'number_of_frames_to_average': 5}
+            {'fps_depth': [30, 10]},  
+            {'number_of_frames_to_average': [7, 3]},
+            {'current_resolution': LaunchConfiguration('start_resolution')}
         ],
     )
 
@@ -112,6 +120,7 @@ def generate_launch_description():
             declare_gst_height,
             declare_gst_fps,
             declare_gst_bitrate,
+            declare_current_resolution,
             camera_hd_gripper,
             gst_camera_bridge_delayed,
         ]
