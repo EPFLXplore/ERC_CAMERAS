@@ -97,6 +97,12 @@ class OakDStereoCamera:
         self.flip_camera = (
             self.node.get_parameter("flip_camera").get_parameter_value().bool_value
         )
+        # we set max exposure time to avoid motion blur when the arm moves
+        # WARNING: too low --> too much pepper noise, too high --> motion blur
+        self.node.declare_parameter("max_exposure_us", 4600)
+        self.max_exposure_us = (
+            self.node.get_parameter("max_exposure_us").get_parameter_value().integer_value
+        )
 
         self.node.declare_parameter("current_resolution", "1080P")
         current_resolution = (
@@ -591,6 +597,11 @@ class OakDStereoCamera:
         self.camRgb.setBoardSocket(self.rgbCamSocket)
         self.camRgb.setResolution(self.rgbResolution)
         self.camRgb.setFps(self.fps_internal[self.current])
+        # Exposure stays auto (ISO/gain included), but the AE is not allowed to
+        # buy brightness with a long shutter: past ~4.5 ms the tags smear as soon
+        # as the arm moves. Capping the limit makes AE trade time for gain instead.
+        self.camRgb.initialControl.setAutoExposureEnable()
+        self.camRgb.initialControl.setAutoExposureLimit(max(1, self.max_exposure_us))
         # Flip is done on-sensor now: frames arrive as JPEG on the host, so we
         # can no longer cv2.rotate them there. This flips both MJPEG streams.
         if self.flip_camera:
