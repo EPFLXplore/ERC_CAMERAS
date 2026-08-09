@@ -304,7 +304,6 @@ def generate_launch_description():
         parameters=[
             {"mode":    "cs"},
             {"host":    ParameterValue(gcs_ip,      value_type=str)},
-            {"base_port": 5008},
             {"width":   ParameterValue(gst_width,   value_type=int)},
             {"height":  ParameterValue(gst_height,  value_type=int)},
             {"fps":     ParameterValue(opt_fps,     value_type=int)},

@@ -99,7 +99,6 @@ class GstCameraBridgeNode(Node):
         super().__init__("gst_camera_bridge")
         self.declare_parameter("mode", "nav")  # "nav" or "cs"
         self.declare_parameter("host", "169.254.55.164") # Control Station NUC
-        self.declare_parameter("base_port", 5000)
         self.declare_parameter("width", 640)
         self.declare_parameter("height", 360)
         self.declare_parameter("fps", CAM_FPS)
@@ -107,7 +106,6 @@ class GstCameraBridgeNode(Node):
 
         mode      = self.get_parameter("mode").value
         host      = self.get_parameter("host").value
-        base_port = self.get_parameter("base_port").value
         width     = self.get_parameter("width").value
         height    = self.get_parameter("height").value
         fps       = self.get_parameter("fps").value
@@ -126,7 +124,7 @@ class GstCameraBridgeNode(Node):
         self._streams = {}
         for i, cam in enumerate(camera_list):
             topic = cam["topic"]
-            port  = base_port + i * 2
+            port  = cam["port"]
             stream = CameraStream(i, topic, host, port, width, height, fps, bitrate, self.get_logger())
             self._streams[topic] = stream
             self.create_subscription(
