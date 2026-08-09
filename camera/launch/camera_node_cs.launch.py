@@ -96,7 +96,7 @@ exec ros2 service call "$S" std_srvs/srv/SetBool '{{data: true}}'
 def generate_launch_description():
     declare_gcs_ip = DeclareLaunchArgument(
         "gcs_ip",
-        default_value="169.254.55.164",
+        default_value="169.254.55.166",
         description="Control station IP address",
     )
     declare_opt_jpeg_quality = DeclareLaunchArgument(
@@ -206,39 +206,65 @@ def generate_launch_description():
         output="screen",
     )
 
+    camera_cs_drill_inside = LifecycleNode(
+        package="camera",
+        executable="camera",
+        name="camera_cs_drill_inside",
+        namespace="/ROVER",
+        parameters=[
+            {"camera_type": "monocular"},
+            {"topic_service": "/ROVER/req_camera_cs_drill_inside"},
+            {"topic_pub": "feed_camera_cs_drill_inside"},
+            {"bw_pub": "/ROVER/bw_camera_cs_drill_inside"},
+            {"devrule": "/dev/drill_cam_inside"},
+            {"state": "/ROVER/state_camera_cs_drill_inside"},
+            {"jpeg_quality": ParameterValue(opt_jpeg_quality, value_type=int)},
+            {"x": ParameterValue(opt_width,  value_type=int)},
+            {"y": ParameterValue(opt_height, value_type=int)},
+            {"fps": ParameterValue(opt_fps,  value_type=int)},
+        ],
+        output="screen",
+    )
+
+
     # ── Node FQNs ─────────────────────────────────────────────────────────────
 
     n_top   = "/ROVER/camera_cs_top"
     n_right = "/ROVER/camera_cs_right_steer"
     n_left  = "/ROVER/camera_cs_left_steer"
-
+    n_drill_inside = "/ROVER/camera_cs_drill_inside"
     # ── Lifecycle: configure ──────────────────────────────────────────────────
 
     configure_top   = ExecuteProcess(cmd=_lifecycle_configure_cmd(n_top),   output="screen")
     configure_right = ExecuteProcess(cmd=_lifecycle_configure_cmd(n_right), output="screen")
     configure_left  = ExecuteProcess(cmd=_lifecycle_configure_cmd(n_left),  output="screen")
+    configure_drill_inside = ExecuteProcess(cmd=_lifecycle_configure_cmd(n_drill_inside),  output="screen")
 
     # ── Lifecycle: activate ───────────────────────────────────────────────────
 
     activate_top   = ExecuteProcess(cmd=_lifecycle_activate_cmd(n_top),   output="screen")
     activate_right = ExecuteProcess(cmd=_lifecycle_activate_cmd(n_right), output="screen")
     activate_left  = ExecuteProcess(cmd=_lifecycle_activate_cmd(n_left),  output="screen")
+    activate_drill_inside = ExecuteProcess(cmd=_lifecycle_activate_cmd(n_drill_inside),  output="screen")
 
     # ── SetBool: start streaming ──────────────────────────────────────────────
 
     call_top   = ExecuteProcess(cmd=_lifecycle_call_setbool_cmd(n_top,   "/ROVER/req_camera_cs_top"),         output="screen")
     call_right = ExecuteProcess(cmd=_lifecycle_call_setbool_cmd(n_right, "/ROVER/req_camera_cs_right_steer"), output="screen")
     call_left  = ExecuteProcess(cmd=_lifecycle_call_setbool_cmd(n_left,  "/ROVER/req_camera_cs_left_steer"),  output="screen")
+    call_drill_inside = ExecuteProcess(cmd=_lifecycle_call_setbool_cmd(n_drill_inside,  "/ROVER/req_camera_cs_drill_inside"),  output="screen")
 
     # ── Stagger: V4L2 cameras are fast — 0 / 0.5 / 1.0 s ────────────────────
 
     delayed_top   = TimerAction(period=0.0, actions=[camera_cs_top])
     delayed_right = TimerAction(period=0.5, actions=[camera_cs_right_steer])
     delayed_left  = TimerAction(period=1.0, actions=[camera_cs_left_steer])
+    delayed_drill_inside  = TimerAction(period=1.5, actions=[camera_cs_drill_inside])
 
     configure_top_delayed   = TimerAction(period=0.0, actions=[configure_top])
     configure_right_delayed = TimerAction(period=0.5, actions=[configure_right])
     configure_left_delayed  = TimerAction(period=1.0, actions=[configure_left])
+    configure_drill_inside_delayed  = TimerAction(period=1.5, actions=[configure_drill_inside])
 
     # Activate only after configure exits for each camera.
     activate_after_configure_top = RegisterEventHandler(
@@ -250,6 +276,9 @@ def generate_launch_description():
     activate_after_configure_left = RegisterEventHandler(
         OnProcessExit(target_action=configure_left, on_exit=[activate_left])
     )
+    activate_after_configure_drill_inside = RegisterEventHandler(
+        OnProcessExit(target_action=configure_drill_inside, on_exit=[activate_drill_inside])
+    )
 
     # SetBool only after activate exits.
     call_after_activate_top = RegisterEventHandler(
@@ -260,6 +289,9 @@ def generate_launch_description():
     )
     call_after_activate_left = RegisterEventHandler(
         OnProcessExit(target_action=activate_left, on_exit=[call_left])
+    )
+    call_after_activate_drill_inside = RegisterEventHandler(
+        OnProcessExit(target_action=activate_drill_inside, on_exit=[call_drill_inside])
     )
 
     # ── GStreamer bridge: CS camera feeds → H.264 UDP to CS NUC ──────────────
@@ -295,14 +327,18 @@ def generate_launch_description():
         delayed_top,
         delayed_right,
         delayed_left,
+        delayed_drill_inside,
         configure_top_delayed,
         configure_right_delayed,
         configure_left_delayed,
+        configure_drill_inside_delayed,
         activate_after_configure_top,
         activate_after_configure_right,
         activate_after_configure_left,
+        activate_after_configure_drill_inside,
         call_after_activate_top,
         call_after_activate_right,
         call_after_activate_left,
+        call_after_activate_drill_inside,
         gst_bridge_delayed,
     ])

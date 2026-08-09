@@ -25,6 +25,7 @@ _CS_CAMERAS = [
     {"topic": "/ROVER/feed_camera_cs_top",         "port": 5008},
     {"topic": "/ROVER/feed_camera_cs_right_steer", "port": 5010},
     {"topic": "/ROVER/feed_camera_cs_left_steer",  "port": 5012},
+    {"topic": "/ROVER/feed_camera_cs_drill_inside", "port": 5016},
 ]
 
 
