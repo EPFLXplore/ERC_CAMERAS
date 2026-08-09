@@ -33,7 +33,6 @@ def generate_launch_description():
     #         {'devrule': ""},
     #         {'info': "/NAV/camera_info_"}, # we concatenate the devrule
     #         {'state': "/NAV/state_camera_nav_0"},
-    #         {'screenshot': '/NAV/screenshot_camera_nav_0'},
     #         {'fps': 5},
     #         {'x': 1280},
     #         {'y': 720},
@@ -96,7 +95,6 @@ def generate_launch_description():
     #         {'devrule': "19443010714B177E00"}, # To get with print("Found Oak1W Stereo Camera : ", dai.Device.getAllAvailableDevices()) under the name : "deviceId"
     #         {'info': "/NAV/camera_info_"}, # we concatenate the devrule
     #         {'state': "/NAV/state_camera_nav_3"},
-    #         {'screenshot': '/NAV/screenshot_camera_nav_3'},
     #         {'fps': 30},
     #         {'x': 1280},
     #         {'y': 720},
@@ -119,7 +117,6 @@ def generate_launch_description():
             {'devrule': ""},
             {'info': "/NAV/camera_info_0"}, # we concatenate the devrule
             {'state': "/NAV/state_camera_nav_0"},
-            {'screenshot': '/NAV/screenshot_camera_nav_0'},
             {'fps': 5},
             {'x': 1280},
             {'y': 720},
@@ -146,7 +143,6 @@ def generate_launch_description():
             {'devrule': ""},
             {'info': "/NAV/camera_info_1"}, # we concatenate the devrule
             {'state': "/NAV/state_camera_nav_1"},
-            {'screenshot': '/NAV/screenshot_camera_nav_1'},
             {'fps': 5},
             {'x': 1280},
             {'y': 720},
@@ -173,7 +169,6 @@ def generate_launch_description():
             {'devrule': ""},
             {'info': "/NAV/camera_info_2"}, # we concatenate the devrule
             {'state': "/NAV/state_camera_nav_2"},
-            {'screenshot': '/NAV/screenshot_camera_nav_2'},
             {'fps': 5},
             {'x': 1280},
             {'y': 720},
@@ -200,7 +195,6 @@ def generate_launch_description():
             {'devrule': ""},
             {'info': "/NAV/camera_info_3"}, # we concatenate the devrule
             {'state': "/NAV/state_camera_nav_3"},
-            {'screenshot': '/NAV/screenshot_camera_nav_3'},
             {'fps': 5},
             {'x': 1280},
             {'y': 720},

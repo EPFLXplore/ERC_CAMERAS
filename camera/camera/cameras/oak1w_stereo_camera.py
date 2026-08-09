@@ -102,15 +102,6 @@ class Oak1WStereoCamera:
 
         self.bridge = CvBridge()
 
-        self.node.declare_parameter("screenshot", self.node.default)
-        self.screenshot_topic = self.node.get_parameter("screenshot").get_parameter_value().string_value
-        self.path_images = self.screenshot_topic[5:]
-        self.take_screenshot_srv = self.node.create_service(
-            SetBool,
-            self.screenshot_topic,
-            self.take_screenshot,
-            callback_group=MutuallyExclusiveCallbackGroup(),
-        )
 
         self.node.declare_parameter("info", self.node.default)
         self.info = self.node.get_parameter("info").get_parameter_value().string_value
@@ -208,9 +199,6 @@ class Oak1WStereoCamera:
             self.last_frame_time = None
 
     def destroy_ros_entities(self):
-        if self.take_screenshot_srv is not None:
-            self.node.destroy_service(self.take_screenshot_srv)
-            self.take_screenshot_srv = None
         if self.camera_info_service is not None:
             self.node.destroy_service(self.camera_info_service)
             self.camera_info_service = None
@@ -233,21 +221,7 @@ class Oak1WStereoCamera:
         self.close_device()
         self.open_device()
 
-    def take_screenshot(self, request, response):
-        jpeg = self.last_jpeg_data
-        if jpeg is not None:
-            frame = cv2.imdecode(np.frombuffer(jpeg, np.uint8), cv2.IMREAD_COLOR)
-            if frame is None:
-                response.success = False
-                return response
-            name = time.strftime("%Y-%m-%d_%H:%M:%S", time.localtime()) + ".png"
-            image_dir = os.path.join("/home/xplore/dev_ws/photos_competition", self.path_images)
-            os.makedirs(image_dir, exist_ok=True)
-            cv2.imwrite(os.path.join(image_dir, name), frame)
-            response.success = True
-        else:
-            response.success = False
-        return response
+
 
     def camera_params_callback(self, request, response):
         opened_for_calibration = False
