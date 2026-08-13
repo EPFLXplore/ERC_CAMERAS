@@ -332,6 +332,8 @@ class OakDStereoCamera:
                 response.cy = float(intrinsics[1][2])
                 response.distortion_coefficients = distortion_coefficients
 
+                self.node.get_logger().info(f"distortion_coefficients: {distortion_coefficients}")
+
             response.rgb_w = self.rgb_res[0]
             response.rgb_h = self.rgb_res[1]
 
