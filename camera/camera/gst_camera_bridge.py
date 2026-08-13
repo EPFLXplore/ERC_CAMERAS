@@ -1,5 +1,6 @@
 import threading
 import gi
+
 gi.require_version("Gst", "1.0")
 from gi.repository import Gst, GLib
 import rclpy
@@ -22,24 +23,49 @@ class CameraStream:
         self.topic = topic
         self._logger = logger
         self._lock = threading.Lock()
-        self._pts = 0
         self._duration = Gst.SECOND // fps
+
+        key_int = max(1, int(round(fps * 0.5)))  # ~0.5 s between IDRs
 
         pipeline_str = (
             f"appsrc name=src "
-            f"is-live=true format=time block=false "
-            f"max-buffers=1 leaky-type=downstream "
-            f"caps=\"image/jpeg,framerate={fps}/1\" "
-            f"! queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 leaky=downstream "
+            f"is-live=true "
+            f"format=time "
+            f"do-timestamp=true "
+            f"min-latency=0 "
+            f"block=false "
+            f"max-buffers=1 "
+            f"max-bytes=0 "
+            f"max-time=0 "
+            f"leaky-type=downstream "
+            f"emit-signals=false "
+            f'caps="image/jpeg,framerate={fps}/1" '
+            f"! queue "
+            f"max-size-buffers=1 "
+            f"max-size-bytes=0 "
+            f"max-size-time=0 "
+            f"leaky=downstream "
             f"! jpegdec "
             f"! videoconvert "
             f"! videoscale "
             f"! video/x-raw,format=I420,width={width},height={height},framerate={fps}/1 "
-            f"! x264enc name=enc bitrate={bitrate} tune=zerolatency speed-preset=superfast "
-            f"key-int-max={fps} vbv-buf-capacity=1000 "
+            f"! x264enc name=enc "
+            f"bitrate={bitrate} "
+            f"tune=zerolatency "
+            f"speed-preset=superfast "
+            f"key-int-max={key_int} "
+            f"vbv-buf-capacity=300 "
             f"! h264parse "
-            f"! rtph264pay pt=96 config-interval=1 mtu=1200 "
-            f"! udpsink host={host} port={port} sync=false async=false buffer-size=65536"
+            f"! rtph264pay "
+            f"pt=96 "
+            f"config-interval=-1 "
+            f"mtu=1200 "
+            f"! udpsink "
+            f"host={host} "
+            f"port={port} "
+            f"sync=false "
+            f"async=false "
+            f"buffer-size=65536"
         )
         self._pipeline = Gst.parse_launch(pipeline_str)
         self._appsrc = self._pipeline.get_by_name("src")
@@ -59,15 +85,16 @@ class CameraStream:
 
     def _on_warning(self, bus, msg):
         warn, dbg = msg.parse_warning()
-        self._logger.warning(f"[GstBridge] {self.topic} WARNING: {warn.message} | {dbg}")
+        self._logger.warning(
+            f"[GstBridge] {self.topic} WARNING: {warn.message} | {dbg}"
+        )
 
     def push(self, jpeg_bytes):
         buf = Gst.Buffer.new_wrapped(jpeg_bytes)
-        with self._lock:
-            buf.pts = self._pts
-            buf.duration = self._duration
-            self._pts += self._duration
+        buf.duration = self._duration
+
         ret = self._appsrc.emit("push-buffer", buf)
+
         if ret != Gst.FlowReturn.OK:
             self._logger.warning(f"[GstBridge] {self.topic} push-buffer returned {ret}")
 
@@ -83,7 +110,7 @@ class GstHDCameraBridgeNode(Node):
     def __init__(self):
         super().__init__("gst_hd_camera_bridge")
         self.declare_parameter("topic", "/HD/camera/rgb")
-        self.declare_parameter("host", "169.254.55.164")
+        self.declare_parameter("host", "169.254.55.166")
         self.declare_parameter("port", 5013)
         self.declare_parameter("width", 854)
         self.declare_parameter("height", 480)
@@ -106,9 +133,12 @@ class GstHDCameraBridgeNode(Node):
 
         threading.Thread(target=GLib.MainLoop().run, daemon=True).start()
 
-        self._stream = CameraStream(topic, host, port, width, height, fps, bitrate, self.get_logger())
+        self._stream = CameraStream(
+            topic, host, port, width, height, fps, bitrate, self.get_logger()
+        )
         self.create_subscription(
-            CompressedImage, topic,
+            CompressedImage,
+            topic,
             lambda msg: self._stream.push(bytes(msg.data)),
             qos,
         )
