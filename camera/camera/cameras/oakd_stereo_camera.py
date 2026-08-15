@@ -191,6 +191,8 @@ class OakDStereoCamera:
 
         # reconnect backoff
         self._reconnect_delay_s = 1.0
+        self._reconnect_max_delay_s = 10.0
+        self._watchdog_timeout_s = 3.0
 
     def _open_device(self):
         """
@@ -241,13 +243,23 @@ class OakDStereoCamera:
         )
 
     def _reconnect(self, reason: str):
-        # Close and reopen with a small delay
+        # Close and reopen with bounded backoff. Keep failures inside the
+        # camera thread so one bad reconnect attempt doesn't kill streaming.
         self.node.get_logger().warn(f"DepthAI reconnecting ({reason}) ...")
         self.close()
         time.sleep(self._reconnect_delay_s)
-        with self._dev_lock:
-            if self.device is None:
-                self._open_device()
+        try:
+            with self._dev_lock:
+                if self.device is None:
+                    self._open_device()
+            self._reconnect_delay_s = 1.0
+            return True
+        except Exception as e:
+            self.node.get_logger().error(f"DepthAI reconnect failed: {e}")
+            self._reconnect_delay_s = min(
+                self._reconnect_delay_s * 2.0, self._reconnect_max_delay_s
+            )
+            return False
 
     def close(self):
         with self._dev_lock:
@@ -358,11 +370,33 @@ class OakDStereoCamera:
         packets = queue.tryGetAll()
         return packets[-1] if packets else None
 
+    def _encode_jpeg_msg(self, packet, quality):
+        try:
+            frame = packet.getCvFrame()
+            ok, encoded = cv2.imencode(
+                ".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), int(quality)]
+            )
+        except RuntimeError as e:
+            self.node.get_logger().error(f"DepthAI RGB frame conversion error: {e}")
+            self._reconnect("rgb frame conversion error")
+            return None
+        except cv2.error as e:
+            self.node.get_logger().error(f"OpenCV JPEG encode error: {e}")
+            return None
+
+        if not ok:
+            return None
+
+        compressed_msg = CompressedImage()
+        compressed_msg.header.stamp = self.node.get_clock().now().to_msg()
+        compressed_msg.format = "jpeg"
+        compressed_msg.data = encoded.tobytes()
+        return compressed_msg
+
     def publish_rgb_external(self):
         """
-        External low-res feed. The frame is downscaled to CS_resolution and
-        JPEG-encoded on the camera (quality = CS_compression_quality); the
-        packet payload is already a complete JPEG.
+        External low-res feed. The frame is downscaled on the camera, then
+        JPEG-encoded on the host to reduce OAK compute load.
         """
         if self.rgb_ext_queue is None:
             return 0, False
@@ -377,18 +411,18 @@ class OakDStereoCamera:
         if pkt is None:
             return 0, False
 
-        compressed_msg = CompressedImage()
-        compressed_msg.header.stamp = self.node.get_clock().now().to_msg()
-        compressed_msg.format = "jpeg"
-        compressed_msg.data = pkt.getData().tobytes()
+        compressed_msg = self._encode_jpeg_msg(pkt, self.CS_compression_quality)
+        if compressed_msg is None:
+            self.node.get_logger().error("Failed to JPEG-encode external RGB frame.")
+            return 0, False
+
         self.cam_pubs.publish(compressed_msg)
         return len(compressed_msg.data), True
 
     def publish_rgb_internal(self):
         """
-        Internal full-res feed. JPEG comes straight from the on-device MJPEG
-        encoder (quality 95); no host-side decode/encode/rotate needed
-        (flip is applied on the sensor).
+        Internal full-res feed. Raw frames come from the OAK and are
+        JPEG-encoded on the host to reduce OAK compute load.
         """
         if self.rgb_queue is None:
             return
@@ -402,10 +436,11 @@ class OakDStereoCamera:
             return
 
         if rgb_packet is not None:
-            compressed_msg = CompressedImage()
-            compressed_msg.header.stamp = self.node.get_clock().now().to_msg()
-            compressed_msg.format = "jpeg"
-            compressed_msg.data = rgb_packet.getData().tobytes()
+            compressed_msg = self._encode_jpeg_msg(rgb_packet, self.internal_quality)
+            if compressed_msg is None:
+                self.node.get_logger().error("Failed to JPEG-encode internal RGB frame.")
+                return
+
             self.cam_internal_pubs.publish(compressed_msg)
 
     def publish_image(self, frame):
@@ -454,9 +489,14 @@ class OakDStereoCamera:
 
         external_c = 0
 
+        last_event_time = time.monotonic()
+
         with self._dev_lock:
             if self.device is None:
-                self._open_device()
+                try:
+                    self._open_device()
+                except Exception as e:
+                    self.node.get_logger().error(f"Failed to open DepthAI device: {e}")
 
         try:
             while not self.node.stopped and (
@@ -467,6 +507,8 @@ class OakDStereoCamera:
                 # camera drives the loop (no sleep() jitter, no missed frames).
                 # The 100 ms timeout keeps the stop flags responsive.
                 if self.device is None:
+                    self._reconnect("device not open")
+                    last_event_time = time.monotonic()
                     time.sleep(0.1)
                     continue
 
@@ -478,6 +520,15 @@ class OakDStereoCamera:
                 except RuntimeError as e:
                     self.node.get_logger().error(f"DepthAI event wait error: {e}")
                     self._reconnect("event wait error")
+                    continue
+
+                if events:
+                    last_event_time = time.monotonic()
+                elif time.monotonic() - last_event_time > self._watchdog_timeout_s:
+                    self._reconnect(
+                        f"no frames for {self._watchdog_timeout_s:.1f}s"
+                    )
+                    last_event_time = time.monotonic()
                     continue
 
                 for name in events:
@@ -604,8 +655,7 @@ class OakDStereoCamera:
         # as the arm moves. Capping the limit makes AE trade time for gain instead.
         self.camRgb.initialControl.setAutoExposureEnable()
         self.camRgb.initialControl.setAutoExposureLimit(max(1, self.max_exposure_us))
-        # Flip is done on-sensor now: frames arrive as JPEG on the host, so we
-        # can no longer cv2.rotate them there. This flips both MJPEG streams.
+        # Flip is done on-sensor so both raw RGB streams arrive already oriented.
         if self.flip_camera:
             self.camRgb.setImageOrientation(
                 dai.CameraImageOrientation.ROTATE_180_DEG
@@ -643,43 +693,25 @@ class OakDStereoCamera:
         self.stereo.setExtendedDisparity(self.extended_disparity)   # divides minimum depth by 2
         self.stereo.setSubpixel(self.subpixel)           # incompatible with extended_disparity, better for long range (over 3m) but worse for close objects
 
-        ## Hardware encoders (RVC2 MJPEG block, ~zero host cost)
-        # Internal full-res feed: video output (NV12) -> MJPEG @ quality 95
-        self.videoEnc = self.pipeline.create(dai.node.VideoEncoder)
-        self.videoEnc.setDefaultProfilePreset(
-            self.fps_internal[self.current], dai.VideoEncoderProperties.Profile.MJPEG
-        )
-        self.videoEnc.setQuality(self.internal_quality)
-        # LATENCY: small frame pool so the encoder can't hoard frames either.
-        self.videoEnc.setNumFramesPool(2)
-
-        # External low-res feed: downscale on device, then MJPEG @ quality 15
+        ## RGB feeds are JPEG-compressed on the host. This saves OAK compute at
+        # the cost of higher USB bandwidth.
         self.manip = self.pipeline.create(dai.node.ImageManip)
         self.manip.initialConfig.setResize(
             self.CS_resolution[0], self.CS_resolution[1]
         )
-        self.manip.initialConfig.setFrameType(dai.RawImgFrame.Type.NV12)
+        self.manip.initialConfig.setFrameType(dai.RawImgFrame.Type.BGR888p)
         self.manip.setMaxOutputFrameSize(
-            self.CS_resolution[0] * self.CS_resolution[1] * 3 // 2
+            self.CS_resolution[0] * self.CS_resolution[1] * 3
         )
         # LATENCY: don't let the manip node buffer/backpressure either.
         self.manip.inputImage.setBlocking(False)
         self.manip.inputImage.setQueueSize(1)
 
-        self.extEnc = self.pipeline.create(dai.node.VideoEncoder)
-        self.extEnc.setDefaultProfilePreset(
-            self.fps_external[self.current], dai.VideoEncoderProperties.Profile.MJPEG
-        )
-        self.extEnc.setQuality(self.CS_compression_quality)
-        self.extEnc.setNumFramesPool(2)
-
         # linking
-        self.camRgb.video.link(self.videoEnc.input)          # NV12 required by encoder
-        self.videoEnc.bitstream.link(rgbOut.input)           # JPEG bytes -> "rgb"
+        self.camRgb.video.link(rgbOut.input)                 # Raw NV12 -> "rgb"
 
         self.camRgb.video.link(self.manip.inputImage)
-        self.manip.out.link(self.extEnc.input)
-        self.extEnc.bitstream.link(rgbExtOut.input)          # JPEG bytes -> "rgb_ext"
+        self.manip.out.link(rgbExtOut.input)                 # Raw BGR -> "rgb_ext"
 
         self.left.out.link(self.stereo.left)
         self.right.out.link(self.stereo.right)
