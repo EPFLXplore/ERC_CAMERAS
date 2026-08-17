@@ -655,7 +655,11 @@ class OakDStereoCamera:
         # as the arm moves. Capping the limit makes AE trade time for gain instead.
         self.camRgb.initialControl.setAutoExposureEnable()
         self.camRgb.initialControl.setAutoExposureLimit(max(1, self.max_exposure_us))
-        # Flip is done on-sensor so both raw RGB streams arrive already oriented.
+        self.camRgb.initialControl.setAutoFocusMode(
+            dai.CameraControl.AutoFocusMode.CONTINUOUS_PICTURE
+        )
+        # Flip is done on-sensor now: frames arrive as JPEG on the host, so we
+        # can no longer cv2.rotate them there. This flips both MJPEG streams.
         if self.flip_camera:
             self.camRgb.setImageOrientation(
                 dai.CameraImageOrientation.ROTATE_180_DEG
@@ -693,8 +697,17 @@ class OakDStereoCamera:
         self.stereo.setExtendedDisparity(self.extended_disparity)   # divides minimum depth by 2
         self.stereo.setSubpixel(self.subpixel)           # incompatible with extended_disparity, better for long range (over 3m) but worse for close objects
 
-        ## RGB feeds are JPEG-compressed on the host. This saves OAK compute at
-        # the cost of higher USB bandwidth.
+        ## Hardware encoders (RVC2 MJPEG block, ~zero host cost)
+        # Internal full-res feed: video output (NV12) -> MJPEG @ quality 95
+        self.videoEnc = self.pipeline.create(dai.node.VideoEncoder)
+        self.videoEnc.setDefaultProfilePreset(
+            self.fps_internal[self.current], dai.VideoEncoderProperties.Profile.MJPEG
+        )
+        self.videoEnc.setQuality(self.internal_quality)
+        # LATENCY: small frame pool so the encoder can't hoard frames either.
+        self.videoEnc.setNumFramesPool(1)
+
+        # External low-res feed: downscale on device, then MJPEG @ quality 15
         self.manip = self.pipeline.create(dai.node.ImageManip)
         self.manip.initialConfig.setResize(
             self.CS_resolution[0], self.CS_resolution[1]
