@@ -38,6 +38,7 @@ def generate_launch_description():
             {'fps': 5},
             {'x': 1920},
             {'y': 1080},
+            {'jpeg_quality': 95},  # high quality: needed to read distant ArUco tags
             {'flip_camera':False},
             {'cam_id':"19443010714B177E00"},
             {'health_check_period_sec': 1.0},
@@ -65,6 +66,7 @@ def generate_launch_description():
             {'fps': 5},
             {'x': 1920},
             {'y': 1080},
+            {'jpeg_quality': 95},  # high quality: needed to read distant ArUco tags
             {'flip_camera':False},
             {'cam_id':"19443010A19E157E00"},
             {'health_check_period_sec': 1.0},
@@ -92,6 +94,7 @@ def generate_launch_description():
             {'fps': 5},
             {'x': 1920},
             {'y': 1080},
+            {'jpeg_quality': 95},  # high quality: needed to read distant ArUco tags
             {'flip_camera':False},
             {'cam_id':"19443010816C177E00"},
             {'health_check_period_sec': 1.0},

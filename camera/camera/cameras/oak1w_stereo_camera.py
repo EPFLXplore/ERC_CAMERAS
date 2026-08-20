@@ -1,3 +1,4 @@
+import array
 import os
 import sys
 import time
@@ -321,7 +322,12 @@ class Oak1WStereoCamera:
                 if latest_rgb is None:
                     continue
 
-                jpeg_data = bytes(np.array(latest_rgb.getData(), dtype=np.uint8))
+                # getData() is already numpy.ndarray[uint8]; hand the publisher an
+                # array.array('B') so CompressedImage.data hits its fast path. Passing
+                # bytes/numpy instead makes the generated setter validate every byte in
+                # pure Python (~100 ms per 1080p frame on the Jetson).
+                jpeg_data = array.array("B")
+                jpeg_data.frombytes(latest_rgb.getData().tobytes())
                 self.last_jpeg_data = jpeg_data
                 self.last_frame_time = time.monotonic()
 
