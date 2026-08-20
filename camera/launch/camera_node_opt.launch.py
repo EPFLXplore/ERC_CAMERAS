@@ -240,70 +240,70 @@ def generate_launch_description():
     # at import with a misleading "depthai" error. NAV launch drives this MXID via
     # oak1w_stereo as well.
 
-    cs_nav_3 = LifecycleNode(
-        package="camera",
-        executable="camera",
-        name="cs_nav_3_oakd",
-        namespace="/CS",
-        parameters=[
-            {"camera_type": "oak1w_stereo"},
-            {"topic_service": "/CS/req_camera_nav_3"},
-            {"topic_pub": "feed_camera_nav_3"},
-            {"depth": "/CS/depth_camera_nav_3"},
-            {"bw_pub": "/CS/bw_camera_nav_3"},
-            {"depth_req": "/CS/depth_req_camera_nav_3"},
-            {"devrule": ""},
-            {"info": "/CS/camera_info_3"},
-            {"state": "/CS/state_camera_nav_3"},
-            {"screenshot": "/CS/screenshot_camera_nav_3"},
-            {"flip_camera": False},
-            {"cam_id": "19443010F1C5E01200"},          # OakD MXID from NAV launch
-            {"health_check_period_sec": 1.0},
-            {"health_timeout_sec": 3.0},
-            {"jpeg_quality": ParameterValue(opt_jpeg_quality, value_type=int)},
-            {"x": ParameterValue(opt_width,  value_type=int)},
-            {"y": ParameterValue(opt_height, value_type=int)},
-            {"fps": ParameterValue(opt_fps,  value_type=int)},
-        ],
-        output="screen",
-    )
+    # cs_nav_3 = LifecycleNode(
+    #     package="camera",
+    #     executable="camera",
+    #     name="cs_nav_3_oakd",
+    #     namespace="/CS",
+    #     parameters=[
+    #         {"camera_type": "oak1w_stereo"},
+    #         {"topic_service": "/CS/req_camera_nav_3"},
+    #         {"topic_pub": "feed_camera_nav_3"},
+    #         {"depth": "/CS/depth_camera_nav_3"},
+    #         {"bw_pub": "/CS/bw_camera_nav_3"},
+    #         {"depth_req": "/CS/depth_req_camera_nav_3"},
+    #         {"devrule": ""},
+    #         {"info": "/CS/camera_info_3"},
+    #         {"state": "/CS/state_camera_nav_3"},
+    #         {"screenshot": "/CS/screenshot_camera_nav_3"},
+    #         {"flip_camera": False},
+    #         {"cam_id": "19443010F1C5E01200"},          # OakD MXID from NAV launch
+    #         {"health_check_period_sec": 1.0},
+    #         {"health_timeout_sec": 3.0},
+    #         {"jpeg_quality": ParameterValue(opt_jpeg_quality, value_type=int)},
+    #         {"x": ParameterValue(opt_width,  value_type=int)},
+    #         {"y": ParameterValue(opt_height, value_type=int)},
+    #         {"fps": ParameterValue(opt_fps,  value_type=int)},
+    #     ],
+    #     output="screen",
+    # )
 
     # ── Lifecycle: configure (bash waits + retries; see module helpers) ─────
 
     n0 = "/CS/cs_nav_0_oak1w_21W_T2544_0008"
     n1 = "/CS/cs_nav_1_oak1w_21W_T2544_0069"
     n2 = "/CS/cs_nav_2_oak1w_21W_T2544_0035"
-    n3 = "/CS/cs_nav_3_oakd"
+    # n3 = "/CS/cs_nav_3_oakd"
 
     configure_0 = ExecuteProcess(cmd=_lifecycle_configure_cmd(n0), output="screen")
     configure_1 = ExecuteProcess(cmd=_lifecycle_configure_cmd(n1), output="screen")
     configure_2 = ExecuteProcess(cmd=_lifecycle_configure_cmd(n2), output="screen")
-    configure_3 = ExecuteProcess(cmd=_lifecycle_configure_cmd(n3), output="screen")
+    # configure_3 = ExecuteProcess(cmd=_lifecycle_configure_cmd(n3), output="screen")
 
     # ── Lifecycle: activate ───────────────────────────────────────────────────
 
     activate_0 = ExecuteProcess(cmd=_lifecycle_activate_cmd(n0), output="screen")
     activate_1 = ExecuteProcess(cmd=_lifecycle_activate_cmd(n1), output="screen")
     activate_2 = ExecuteProcess(cmd=_lifecycle_activate_cmd(n2), output="screen")
-    activate_3 = ExecuteProcess(cmd=_lifecycle_activate_cmd(n3), output="screen")
+    # activate_3 = ExecuteProcess(cmd=_lifecycle_activate_cmd(n3), output="screen")
 
     # ── SetBool: start streaming ──────────────────────────────────────────────
 
     call_0 = ExecuteProcess(cmd=_lifecycle_call_setbool_cmd(n0, "/CS/req_camera_nav_0"), output="screen")
     call_1 = ExecuteProcess(cmd=_lifecycle_call_setbool_cmd(n1, "/CS/req_camera_nav_1"), output="screen")
     call_2 = ExecuteProcess(cmd=_lifecycle_call_setbool_cmd(n2, "/CS/req_camera_nav_2"), output="screen")
-    call_3 = ExecuteProcess(cmd=_lifecycle_call_setbool_cmd(n3, "/CS/req_camera_nav_3"), output="screen")
+    # call_3 = ExecuteProcess(cmd=_lifecycle_call_setbool_cmd(n3, "/CS/req_camera_nav_3"), output="screen")
 
     # ── Timers: stagger camera nodes; configure wrappers poll until ready ─────
     delayed_0 = TimerAction(period=0.0,  actions=[cs_nav_0])
     delayed_1 = TimerAction(period=3.0, actions=[cs_nav_1])
     delayed_2 = TimerAction(period=6.0, actions=[cs_nav_2])
-    delayed_3 = TimerAction(period=9.0, actions=[cs_nav_3])
+    # delayed_3 = TimerAction(period=9.0, actions=[cs_nav_3])
 
     configure_0_delayed = TimerAction(period=0.0,  actions=[configure_0])
     configure_1_delayed = TimerAction(period=3.0, actions=[configure_1])
     configure_2_delayed = TimerAction(period=6.0, actions=[configure_2])
-    configure_3_delayed = TimerAction(period=9.0, actions=[configure_3])
+    # configure_3_delayed = TimerAction(period=9.0, actions=[configure_3])
 
     # Activate only after configure command exits for each camera.
     activate_after_configure_0 = RegisterEventHandler(
@@ -315,9 +315,9 @@ def generate_launch_description():
     activate_after_configure_2 = RegisterEventHandler(
         OnProcessExit(target_action=configure_2, on_exit=[activate_2])
     )
-    activate_after_configure_3 = RegisterEventHandler(
-        OnProcessExit(target_action=configure_3, on_exit=[activate_3])
-    )
+    # activate_after_configure_3 = RegisterEventHandler(
+    #     OnProcessExit(target_action=configure_3, on_exit=[activate_3])
+    # )
 
     # ── Event handlers: call SetBool only after activate exits ────────────────
 
@@ -330,9 +330,9 @@ def generate_launch_description():
     call_after_activate_2 = RegisterEventHandler(
         OnProcessExit(target_action=activate_2, on_exit=[call_2])
     )
-    call_after_activate_3 = RegisterEventHandler(
-        OnProcessExit(target_action=activate_3, on_exit=[call_3])
-    )
+    # call_after_activate_3 = RegisterEventHandler(
+    #     OnProcessExit(target_action=activate_3, on_exit=[call_3])
+    # )
 
     #launch gstream feeds to be visualized at the CS
     gst_bridge = RosNode(
@@ -366,18 +366,18 @@ def generate_launch_description():
         delayed_0,
         delayed_1,
         delayed_2,
-        delayed_3,
+        # delayed_3,
         configure_0_delayed,
         configure_1_delayed,
         configure_2_delayed,
-        configure_3_delayed,
+        # configure_3_delayed,
         activate_after_configure_0,
         activate_after_configure_1,
         activate_after_configure_2,
-        activate_after_configure_3,
+        # activate_after_configure_3,
         call_after_activate_0,
         call_after_activate_1,
         call_after_activate_2,
-        call_after_activate_3,
+        # call_after_activate_3,
         gst_bridge_delayed
     ])
