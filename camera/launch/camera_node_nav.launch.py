@@ -35,7 +35,7 @@ def generate_launch_description():
             {'info': "/NAV/camera_info_0"}, # we concatenate the devrule
             {'state': "/NAV/state_camera_nav_0"},
             {'screenshot': '/NAV/screenshot_camera_nav_0'},
-            {'fps': 5},
+            {'fps': 10},
             {'x': 1920},
             {'y': 1080},
             {'jpeg_quality': 95},  # high quality: needed to read distant ArUco tags
@@ -63,7 +63,7 @@ def generate_launch_description():
             {'info': "/NAV/camera_info_1"}, # we concatenate the devrule
             {'state': "/NAV/state_camera_nav_1"},
             {'screenshot': '/NAV/screenshot_camera_nav_1'},
-            {'fps': 5},
+            {'fps': 10},
             {'x': 1920},
             {'y': 1080},
             {'jpeg_quality': 95},  # high quality: needed to read distant ArUco tags
@@ -91,7 +91,7 @@ def generate_launch_description():
             {'info': "/NAV/camera_info_2"}, # we concatenate the devrule
             {'state': "/NAV/state_camera_nav_2"},
             {'screenshot': '/NAV/screenshot_camera_nav_2'},
-            {'fps': 5},
+            {'fps': 10},
             {'x': 1920},
             {'y': 1080},
             {'jpeg_quality': 95},  # high quality: needed to read distant ArUco tags

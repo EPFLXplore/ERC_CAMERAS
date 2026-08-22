@@ -120,6 +120,11 @@ class Oak1WStereoCamera:
         self.node.declare_parameter("flip_camera", False)
         self.flip_camera = self.node.get_parameter("flip_camera").get_parameter_value().bool_value
 
+        # Declared by CameraNode. Too low causes pepper noise; too high motion blur.
+        self.max_exposure_us = (
+            self.node.get_parameter("max_exposure_us").get_parameter_value().integer_value
+        )
+
         self.pipeline = dai.Pipeline()
         cam_rgb = self.pipeline.create(dai.node.ColorCamera)
         enc = self.pipeline.create(dai.node.VideoEncoder)
@@ -150,6 +155,11 @@ class Oak1WStereoCamera:
 
         cam_rgb.setVideoSize(width, height)
         cam_rgb.setFps(self.node.fps)
+        cam_rgb.initialControl.setAutoExposureEnable()
+        cam_rgb.initialControl.setAutoExposureLimit(max(1, self.max_exposure_us))
+        cam_rgb.initialControl.setAutoFocusMode(
+            dai.CameraControl.AutoFocusMode.CONTINUOUS_PICTURE
+        )
 
         rgb_out.input.setBlocking(False)
         rgb_out.input.setQueueSize(1)
@@ -158,7 +168,7 @@ class Oak1WStereoCamera:
         enc.setLossless(False)
         quality = int(self.node.get_parameter("jpeg_quality").value)
         enc.setQuality(quality)
-        enc.setNumFramesPool(2)
+        enc.setNumFramesPool(1)
 
         cam_rgb.video.link(enc.input)
         enc.bitstream.link(rgb_out.input)
