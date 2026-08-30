@@ -87,7 +87,7 @@ def generate_launch_description():
             {'mono_resolution': ["480P", "480P"]},
             {'flip_camera': False},
             {'fps_depth': [1, 10]},  
-            {'number_of_frames_to_average': [1, 2]},
+            {'number_of_frames_to_average': [1, 3]},
             {'current_resolution': LaunchConfiguration('start_resolution')}
         ],
     )
