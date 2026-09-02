@@ -94,7 +94,7 @@ class CameraNode(Node):
             self.stop_event.clear()
 
             if self.thread is None or not self.thread.is_alive():
-                if self.camera_type == "oakd_stereo":
+                if self.camera_type == "oakd_stereo" or self.camera_type == "oakd_stereo_probing":
                     self.thread = threading.Thread(
                         target=self.camera.publish_feeds,
                         kwargs={"stop_event": self.stop_event},
@@ -109,7 +109,7 @@ class CameraNode(Node):
                 self.thread.start()
                 response.success = True
             else:
-                if self.camera_type == "oakd_stereo":
+                if self.camera_type == "oakd_stereo" or self.camera_type == "oakd_stereo_probing":
                     self.get_logger().warn(
                         "Camera is already running. Stop it before starting again."
                     )
