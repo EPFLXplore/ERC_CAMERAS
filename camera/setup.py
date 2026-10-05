@@ -22,7 +22,6 @@ setup(
     maintainer_email="arno.laurie@epfl.ch",
     description="TODO: Package description",
     license="TODO: License declaration",
-    tests_require=["pytest"],
     entry_points={
         "console_scripts": [
             "camera = camera.camera_node:main",
