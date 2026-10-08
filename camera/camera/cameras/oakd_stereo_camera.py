@@ -5,6 +5,8 @@ import datetime
 import numpy as np
 from collections import deque
 import threading
+import array
+from rclpy.duration import Duration
 
 from sensor_msgs.msg import CompressedImage, Image
 from custom_msg.srv import CameraParams
@@ -154,9 +156,17 @@ class OakDStereoCamera:
         self.previous_frames : deque[np.ndarray] = deque(maxlen=self.number_of_frames_to_average[self.current])
 
         self.CS_resolution = (512, 288)
-        self.CS_compression_quality = 15   # now applied by the on-device MJPEG encoder
+        self.CS_compression_quality = 15   # host cv2 JPEG on the small 512x288 frame (cheap)
+        # Internal full-res feed: encode JPEG on the OAK's hardware MJPEG block
+        # (True) or on the host with cv2 (False). Host encoding of 4K costs
+        # ~90 ms/frame on one core, so it caps 4K at ~10 FPS.
+        self.internal_hw_encode = True
+        # External 512x288 feed: take it from ColorCamera.preview (downscaled by
+        # the ISP, ~free) instead of an ImageManip resizing every 4K frame, which
+        # competes with StereoDepth/encoder for the OAK's SHAVE/CMX resources.
+        self.ext_from_preview = True
         if self.rgbResolution == dai.ColorCameraProperties.SensorResolution.THE_4_K:
-            self.internal_quality = 90  # limit value before fps drop
+            self.internal_quality = 85  # limit value before fps drop = 90
         else:
             self.internal_quality = 95  # default value
 
@@ -206,6 +216,10 @@ class OakDStereoCamera:
         for speed in (dai.UsbSpeed.SUPER_PLUS, dai.UsbSpeed.SUPER, dai.UsbSpeed.HIGH):
             try:
                 dev = dai.Device(self.pipeline, maxUsbSpeed=speed)
+
+                # --- To see what is slowing the feeds ---
+                # dev.setLogLevel(dai.LogLevel.INFO)
+                # dev.setLogOutputLevel(dai.LogLevel.INFO)
 
                 # Keep queues small to avoid backlog/latency and reduce host pressure
                 self.rgb_queue = dev.getOutputQueue(
@@ -370,6 +384,22 @@ class OakDStereoCamera:
         packets = queue.tryGetAll()
         return packets[-1] if packets else None
 
+    def _capture_stamp(self, packet, tag):
+        """ROS stamp of the moment the frame was captured on the OAK (not when
+        it was published), and a log of the capture->host latency every 2 s."""
+        now = self.node.get_clock().now()
+        try:
+            lat = (dai.Clock.now() - packet.getTimestamp()).total_seconds()
+        except Exception:
+            return now.to_msg()
+        t = time.monotonic()
+        if not hasattr(self, "_lat_log_t"):
+            self._lat_log_t = {}
+        if t - self._lat_log_t.get(tag, 0.0) > 2.0:
+            self._lat_log_t[tag] = t
+            # self.node.get_logger().info(f"[latency] {tag}: {lat * 1000:.0f} ms")
+        return (now - Duration(seconds=max(lat, 0.0))).to_msg()
+
     def _encode_jpeg_msg(self, packet, quality):
         try:
             frame = packet.getCvFrame()
@@ -388,9 +418,26 @@ class OakDStereoCamera:
             return None
 
         compressed_msg = CompressedImage()
-        compressed_msg.header.stamp = self.node.get_clock().now().to_msg()
+        compressed_msg.header.stamp = self._capture_stamp(packet, "rgb_ext")
         compressed_msg.format = "jpeg"
-        compressed_msg.data = encoded.tobytes()
+        # array.array('B') hits rclpy's fast path; plain bytes triggers a
+        # per-byte Python range check in the generated setter (very slow).
+        compressed_msg.data = array.array('B', encoded.tobytes())
+        return compressed_msg
+
+    def _jpeg_packet_to_msg(self, packet):
+        """Packet already holds a JPEG from the on-device MJPEG encoder:
+        just wrap the bytes, no decode/encode on the host."""
+        try:
+            data = packet.getData()
+        except RuntimeError as e:
+            self.node.get_logger().error(f"DepthAI MJPEG packet error: {e}")
+            self._reconnect("mjpeg packet error")
+            return None
+        compressed_msg = CompressedImage()
+        compressed_msg.header.stamp = self._capture_stamp(packet, "rgb")
+        compressed_msg.format = "jpeg"
+        compressed_msg.data = array.array('B', data.tobytes())
         return compressed_msg
 
     def publish_rgb_external(self):
@@ -436,22 +483,25 @@ class OakDStereoCamera:
             return
 
         if rgb_packet is not None:
-            compressed_msg = self._encode_jpeg_msg(rgb_packet, self.internal_quality)
+            if self.internal_hw_encode:
+                compressed_msg = self._jpeg_packet_to_msg(rgb_packet)
+            else:
+                compressed_msg = self._encode_jpeg_msg(rgb_packet, self.internal_quality)
             if compressed_msg is None:
                 self.node.get_logger().error("Failed to JPEG-encode internal RGB frame.")
                 return
 
             self.cam_internal_pubs.publish(compressed_msg)
 
-    def publish_image(self, frame):
+    def publish_image(self, frame, stamp=None):
         msg = Image()
-        msg.header.stamp = self.node.get_clock().now().to_msg()
+        msg.header.stamp = stamp if stamp is not None else self.node.get_clock().now().to_msg()
         msg.height = frame.shape[0]
         msg.width = frame.shape[1]
         msg.encoding = "16UC1"
         msg.is_bigendian = False
         msg.step = msg.width * 2
-        msg.data = frame.tobytes()
+        msg.data = array.array('B', frame.tobytes())  # fast path, see _encode_jpeg_msg
         return msg
 
     def publish_depths(self):
@@ -475,11 +525,21 @@ class OakDStereoCamera:
             #self.depth_pubs.publish(msg_depth)
 
             self.previous_frames.append(depth_frame)
-            self.depth_frame = np.ascontiguousarray(
-                np.mean(self.previous_frames, axis=0).round().astype(np.uint16)
-            )
+            n = len(self.previous_frames)
+            if n == 1:
+                self.depth_frame = depth_frame
+            else:
+                # Integer average (faster than np.mean)
+                acc = self.previous_frames[0].astype(np.uint32)                
+                for f in list(self.previous_frames)[1:]:                    
+                    acc += f                
+                    acc += n // 2                      # round to nearest                
+                    acc //= n                
+                    self.depth_frame = acc.astype(np.uint16)
 
-            msg_depth_avg = self.publish_image(self.depth_frame)
+            msg_depth_avg = self.publish_image(
+                self.depth_frame, self._capture_stamp(depth_packet, "depth")
+            )
             self.depth_avg_pubs.publish(msg_depth_avg)
 
     def publish_feeds(self, devrule=None, stop_event=None):
@@ -679,6 +739,13 @@ class OakDStereoCamera:
         self.stereo.setDefaultProfilePreset(
             dai.node.StereoDepth.PresetMode.HIGH_DENSITY
         )
+        # LATENCY: if stereo runs even slightly slower than the mono cameras,
+        # its default blocking input queues fill up and every depth frame then
+        # waits behind the whole backlog (seconds of standing delay). Keep only
+        # the newest L/R pair instead.
+        for stereo_in in (self.stereo.left, self.stereo.right):
+            stereo_in.setBlocking(False)
+            stereo_in.setQueueSize(1)
 
         self.stereo.setDepthAlign(self.rgbCamSocket)
 
@@ -706,8 +773,40 @@ class OakDStereoCamera:
         self.videoEnc.setQuality(self.internal_quality)
         # LATENCY: small frame pool so the encoder can't hoard frames either.
         self.videoEnc.setNumFramesPool(1)
+        # Never let a busy encoder back-pressure the camera (and with it the
+        # rgb_ext / manip branch): drop frames instead.
+        self.videoEnc.input.setBlocking(False)
+        self.videoEnc.input.setQueueSize(1)
 
-        # External low-res feed: downscale on device, then MJPEG @ quality 15
+        # External low-res feed: downscale on device, JPEG on host
+        if self.ext_from_preview:
+            self.manip = None
+            self.camRgb.setPreviewSize(self.CS_resolution[0], self.CS_resolution[1])
+            self.camRgb.setPreviewKeepAspectRatio(True)
+            self.camRgb.setInterleaved(False)                # BGR888p, same as the manip output
+            self.camRgb.setColorOrder(dai.ColorCameraProperties.ColorOrder.BGR)
+        else:
+            self._build_ext_manip()
+
+        # linking
+        if self.internal_hw_encode:
+            self.camRgb.video.link(self.videoEnc.input)
+            self.videoEnc.bitstream.link(rgbOut.input)       # MJPEG -> "rgb"
+        else:
+            self.camRgb.video.link(rgbOut.input)             # Raw NV12 -> "rgb"
+
+        if self.ext_from_preview:
+            self.camRgb.preview.link(rgbExtOut.input)        # ISP-scaled BGR -> "rgb_ext"
+        else:
+            self.camRgb.video.link(self.manip.inputImage)
+            self.manip.out.link(rgbExtOut.input)             # Raw BGR -> "rgb_ext"
+
+        self.left.out.link(self.stereo.left)
+        self.right.out.link(self.stereo.right)
+        self.stereo.depth.link(depthOut.input)
+
+    def _build_ext_manip(self):
+        """Legacy path: resize every full-res frame with ImageManip."""
         self.manip = self.pipeline.create(dai.node.ImageManip)
         self.manip.initialConfig.setResize(
             self.CS_resolution[0], self.CS_resolution[1]
@@ -719,13 +818,3 @@ class OakDStereoCamera:
         # LATENCY: don't let the manip node buffer/backpressure either.
         self.manip.inputImage.setBlocking(False)
         self.manip.inputImage.setQueueSize(1)
-
-        # linking
-        self.camRgb.video.link(rgbOut.input)                 # Raw NV12 -> "rgb"
-
-        self.camRgb.video.link(self.manip.inputImage)
-        self.manip.out.link(rgbExtOut.input)                 # Raw BGR -> "rgb_ext"
-
-        self.left.out.link(self.stereo.left)
-        self.right.out.link(self.stereo.right)
-        self.stereo.depth.link(depthOut.input)
