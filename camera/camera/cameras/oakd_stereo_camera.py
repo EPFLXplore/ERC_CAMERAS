@@ -532,17 +532,9 @@ class OakDStereoCamera:
             #self.depth_pubs.publish(msg_depth)
 
             self.previous_frames.append(depth_frame)
-            n = len(self.previous_frames)
-            if n == 1:
-                self.depth_frame = depth_frame
-            else:
-                # Integer average (faster than np.mean)
-                acc = self.previous_frames[0].astype(np.uint32)                
-                for f in list(self.previous_frames)[1:]:                    
-                    acc += f                
-                    acc += n // 2                      # round to nearest                
-                    acc //= n                
-                    self.depth_frame = acc.astype(np.uint16)
+            self.depth_frame = np.ascontiguousarray(
+                np.mean(self.previous_frames, axis=0).round().astype(np.uint16)
+            )
 
             msg_depth_avg = self.publish_image(
                 self.depth_frame, self._capture_stamp(depth_packet, "depth")
