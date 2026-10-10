@@ -70,7 +70,7 @@ def generate_launch_description():
         name='camera_hd_gripper',
         namespace='/HD',
         parameters=[
-            {'camera_type': "oakd_stereo_probing"},
+            {'camera_type': "oakd_stereo"},
             {'topic_service': "/ROVER/req_camera_hd_0"},
             {'topic_internal_pub': hd_names['hd_internal_camera_rgb']},
             {'topic_pub': rover_names['rover_hd_rgb_feed']},
@@ -78,8 +78,7 @@ def generate_launch_description():
             {'depth_avg' : rover_names['rover_hd_depth_avg']},
             {'topic_resolution': hd_names['hd_camera_resolution']},
             {'bw_pub': "/HD/bw_camera_hd_0"}, 
-            {'devrule': ""},  # serial number written on the back of the camera # Unused
-            {'info': rover_names['rover_hd_camera_info']}, # we concatenate the devrule
+            {'info': rover_names['rover_hd_camera_info']},
             {'depth_req': "/ROVER/depth_req_camera_hd_0"}, # To activate the depth
             {'state_depth': "/ROVER/state_depth_camera_hd_0"},
             {'fps_internal': [30, 30]},

@@ -17,7 +17,6 @@ class OakDStereoCamera:
     def __init__(self, node):
         # ------------------- Defining parameters -------------------
         self.node = node
-        self.serial_number = self.node.devrule
 
         self.RGB_RESOLUTION_MAP = {
             "1080P": dai.ColorCameraProperties.SensorResolution.THE_1080_P,
@@ -27,6 +26,7 @@ class OakDStereoCamera:
         self.MONO_RESOLUTION_MAP = {
             "400P": dai.MonoCameraProperties.SensorResolution.THE_400_P,
             "480P": dai.MonoCameraProperties.SensorResolution.THE_480_P,
+            "0P": 0 # No depth, only RGB
         }
 
         self.string_array = ["", ""]
@@ -117,7 +117,7 @@ class OakDStereoCamera:
         )
 
         self.camera_info_service = self.node.create_service(
-            CameraParams, self.info + self.serial_number, self.camera_params_callback
+            CameraParams, self.info, self.camera_params_callback
         )
 
         self.resolution_sub = self.node.create_subscription(
@@ -148,7 +148,7 @@ class OakDStereoCamera:
 
         ## ---------- Camera parameters ----------
         self.rgbCamSocket = dai.CameraBoardSocket.CAM_A
-        self._set_current_resolution(current_resolution)
+        self.current = self._set_current_resolution(current_resolution)
         self.node.get_logger().info(f"Current resolution set to {self.current}")
         self.node.get_logger().info(f"RGB Resolution name: {self.rgbResolution_name}")
         self.set_resolution_from_name() #Converts string to dai.CameraProperties.SensorResolution
@@ -186,6 +186,7 @@ class OakDStereoCamera:
             dai.MonoCameraProperties.SensorResolution.THE_480_P: (640, 480),
             dai.ColorCameraProperties.SensorResolution.THE_1080_P: (1920, 1080),
             dai.ColorCameraProperties.SensorResolution.THE_4_K: (3840, 2160),
+            0: None, # No depth, only RGB
         }
         #affect the resolution size to rgb_res and depth_res
         self.set_resolution()
@@ -228,9 +229,10 @@ class OakDStereoCamera:
                 self.rgb_ext_queue = dev.getOutputQueue(
                     name="rgb_ext", maxSize=1, blocking=False
                 )
-                self.depth_queue = dev.getOutputQueue(
-                    name="depth", maxSize=1, blocking=False
-                )
+                if self.depth_res is not None:
+                    self.depth_queue = dev.getOutputQueue(
+                        name="depth", maxSize=1, blocking=False
+                    )
 
                 # IR dot projector (best effort)
                 try:
@@ -293,7 +295,10 @@ class OakDStereoCamera:
         self.close()
 
     def switch_resolution_callback(self, msg: String):
-        if msg.data != self.rgbResolution_name[self.current]:
+        new = self._set_current_resolution(msg.data)
+        if self.rgbResolution_name[new] != self.rgbResolution_name[self.current]:
+            self.node.get_logger().info(f"Switching resolution to {msg.data}")
+            self.node.get_logger().info(f"Current resolution is {self.rgbResolution_name[self.current]} ---------------------------------------------------------")
             with self._dev_lock:
                 self.close()
                 self._update_pipeline(msg)
@@ -372,7 +377,9 @@ class OakDStereoCamera:
             response.depth_h = self.depth_res[1]
             response.depth_scale = 0.001
         else:
-            self.node.get_logger().error("Depth resolution not in map or not set")
+            response.depth_w = 0
+            response.depth_h = 0
+            response.depth_scale = 0.0
 
 
         return response
@@ -573,10 +580,16 @@ class OakDStereoCamera:
                     continue
 
                 try:
-                    events = self.device.getQueueEvents(
-                        ("rgb", "rgb_ext", "depth"),
-                        timeout=datetime.timedelta(milliseconds=100),
-                    )
+                    if self.depth_res is None:
+                        events = self.device.getQueueEvents(
+                            ("rgb", "rgb_ext"),
+                            timeout=datetime.timedelta(milliseconds=100),
+                        )
+                    else:
+                        events = self.device.getQueueEvents(
+                            ("rgb", "rgb_ext", "depth"),
+                            timeout=datetime.timedelta(milliseconds=100),
+                        )
                 except RuntimeError as e:
                     self.node.get_logger().error(f"DepthAI event wait error: {e}")
                     self._reconnect("event wait error")
@@ -618,7 +631,7 @@ class OakDStereoCamera:
                             except RuntimeError:
                                 pass
 
-                    elif name == "depth" and self.depth_mode:
+                    elif ((name == "depth" and self.depth_mode) and self.depth_res is not None):
                         self.publish_depths()
 
 
@@ -628,16 +641,16 @@ class OakDStereoCamera:
     #---------------------------- Pipeline management -------------------
     def _set_current_resolution(self, resolution):
         if resolution == "1080P":
-            self.current = 0
+            return 0
         elif resolution == "4K":
-            self.current = 1
+            return 1
         else:
             self.node.get_logger().error(f"Unknown resolution {resolution}, defaulting to 1080P")
-            self.current = 0
+            return 0
 
     def _update_pipeline(self, rgb_resolution):
         """Rebuild the pipeline with the current resolution settings."""
-        self._set_current_resolution(rgb_resolution.data)
+        self.current = self._set_current_resolution(rgb_resolution.data)
         self.node.get_logger().info(f"Switching camera resolution to RGB: {self.rgbResolution_name[self.current]}, Mono: {self.monoResolution_name[self.current]}")
         self.previous_frames : deque[np.ndarray] = deque(maxlen=self.number_of_frames_to_average[self.current])
         self.set_resolution_from_name()
@@ -684,23 +697,28 @@ class OakDStereoCamera:
 
         # Sources and Outputs
         self.camRgb = self.pipeline.create(dai.node.ColorCamera)
-        self.left = self.pipeline.create(dai.node.MonoCamera)
-        self.right = self.pipeline.create(dai.node.MonoCamera)
-        self.stereo = self.pipeline.create(dai.node.StereoDepth)
+        if self.depth_res is not None:
+            self.left = self.pipeline.create(dai.node.MonoCamera)
+            self.right = self.pipeline.create(dai.node.MonoCamera)
+            self.stereo = self.pipeline.create(dai.node.StereoDepth)
 
         rgbOut = self.pipeline.create(dai.node.XLinkOut)
         rgbExtOut = self.pipeline.create(dai.node.XLinkOut)
-        depthOut = self.pipeline.create(dai.node.XLinkOut)
+        self.queues = [rgbOut, rgbExtOut]
 
         rgbOut.setStreamName("rgb")
         rgbExtOut.setStreamName("rgb_ext")
-        depthOut.setStreamName("depth")
+
+        if self.depth_res is not None:
+            depthOut = self.pipeline.create(dai.node.XLinkOut)
+            depthOut.setStreamName("depth")
+            self.queues.append(depthOut)
 
         # LATENCY: device-side XLink queues default to blocking with ~8 frames
         # buffered on the camera. That adds up to ~8 frames of standing delay.
         # Non-blocking + size 1 means old frames are overwritten, so the host
         # always receives the newest frame.
-        for xout in (rgbOut, rgbExtOut, depthOut):
+        for xout in (self.queues):
             xout.input.setBlocking(False)
             xout.input.setQueueSize(1)
 
@@ -727,42 +745,38 @@ class OakDStereoCamera:
         self.node.get_logger().info(f"RGB camera set to {self.rgbResolution} at {self.fps_internal[self.current]} FPS")
 
         ## Mono Cameras
-        self.left.setResolution(self.monoResolution)
-        self.left.setCamera("left")
-        self.left.setFps(self.fps_depth[self.current])
-
-        self.right.setResolution(self.monoResolution)
-        self.right.setCamera("right")
-        self.right.setFps(self.fps_depth[self.current])
-
-        ## Stereo Properties
-        self.stereo.setDefaultProfilePreset(
-            dai.node.StereoDepth.PresetMode.HIGH_DENSITY
-        )
-        # LATENCY: if stereo runs even slightly slower than the mono cameras,
-        # its default blocking input queues fill up and every depth frame then
-        # waits behind the whole backlog (seconds of standing delay). Keep only
-        # the newest L/R pair instead.
-        for stereo_in in (self.stereo.left, self.stereo.right):
-            stereo_in.setBlocking(False)
-            stereo_in.setQueueSize(1)
-
-        self.stereo.setDepthAlign(self.rgbCamSocket)
-
         if self.depth_res is not None:
+            self.left.setResolution(self.monoResolution)
+            self.left.setCamera("left")
+            self.left.setFps(self.fps_depth[self.current])
+
+            self.right.setResolution(self.monoResolution)
+            self.right.setCamera("right")
+            self.right.setFps(self.fps_depth[self.current])
+
+            ## Stereo Properties
+            self.stereo.setDefaultProfilePreset(
+                dai.node.StereoDepth.PresetMode.HIGH_DENSITY
+            )
+            # LATENCY: if stereo runs even slightly slower than the mono cameras,
+            # its default blocking input queues fill up and every depth frame then
+            # waits behind the whole backlog (seconds of standing delay). Keep only
+            # the newest L/R pair instead.
+            for stereo_in in (self.stereo.left, self.stereo.right):
+                stereo_in.setBlocking(False)
+                stereo_in.setQueueSize(1)
+
+            self.stereo.setDepthAlign(self.rgbCamSocket)
+
             self.stereo.setOutputSize(
                 self.depth_res[0],
                 self.depth_res[1]
             )
-        else:
-            self.node.get_logger().error(
-                "Resolution doesn't match predefined output size"
-            )
 
-        self.stereo.setRectification(True)
-        self.stereo.setLeftRightCheck(True)
-        self.stereo.setExtendedDisparity(self.extended_disparity)   # divides minimum depth by 2
-        self.stereo.setSubpixel(self.subpixel)           # incompatible with extended_disparity, better for long range (over 3m) but worse for close objects
+            self.stereo.setRectification(True)
+            self.stereo.setLeftRightCheck(True)
+            self.stereo.setExtendedDisparity(self.extended_disparity)   # divides minimum depth by 2
+            self.stereo.setSubpixel(self.subpixel)           # incompatible with extended_disparity, better for long range (over 3m) but worse for close objects
 
         ## Hardware encoders (RVC2 MJPEG block, ~zero host cost)
         # Internal full-res feed: video output (NV12) -> MJPEG @ quality 95
@@ -801,9 +815,10 @@ class OakDStereoCamera:
             self.camRgb.video.link(self.manip.inputImage)
             self.manip.out.link(rgbExtOut.input)             # Raw BGR -> "rgb_ext"
 
-        self.left.out.link(self.stereo.left)
-        self.right.out.link(self.stereo.right)
-        self.stereo.depth.link(depthOut.input)
+        if self.depth_res is not None:
+            self.left.out.link(self.stereo.left)
+            self.right.out.link(self.stereo.right)
+            self.stereo.depth.link(depthOut.input)
 
     def _build_ext_manip(self):
         """Legacy path: resize every full-res frame with ImageManip."""
