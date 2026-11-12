@@ -166,7 +166,6 @@ def generate_launch_description():
             {"devrule": ""},
             {"info": "/CS/camera_info_0"},
             {"state": "/CS/state_camera_nav_0"},
-            {"screenshot": "/CS/screenshot_camera_nav_0"},
             {"flip_camera": False},
             {"cam_id": "19443010714B177E00"},
             {"health_check_period_sec": 1.0},
@@ -194,7 +193,6 @@ def generate_launch_description():
             {"devrule": ""},
             {"info": "/CS/camera_info_1"},
             {"state": "/CS/state_camera_nav_1"},
-            {"screenshot": "/CS/screenshot_camera_nav_1"},
             {"flip_camera": False},
             {"cam_id": "19443010A19E157E00"},
             {"health_check_period_sec": 1.0},
@@ -222,7 +220,6 @@ def generate_launch_description():
             {"devrule": ""},
             {"info": "/CS/camera_info_2"},
             {"state": "/CS/state_camera_nav_2"},
-            {"screenshot": "/CS/screenshot_camera_nav_2"},
             {"flip_camera": False},
             {"cam_id": "19443010816C177E00"},
             {"health_check_period_sec": 1.0},
@@ -240,33 +237,32 @@ def generate_launch_description():
     # at import with a misleading "depthai" error. NAV launch drives this MXID via
     # oak1w_stereo as well.
 
-    # cs_nav_3 = LifecycleNode(
-    #     package="camera",
-    #     executable="camera",
-    #     name="cs_nav_3_oakd",
-    #     namespace="/CS",
-    #     parameters=[
-    #         {"camera_type": "oak1w_stereo"},
-    #         {"topic_service": "/CS/req_camera_nav_3"},
-    #         {"topic_pub": "feed_camera_nav_3"},
-    #         {"depth": "/CS/depth_camera_nav_3"},
-    #         {"bw_pub": "/CS/bw_camera_nav_3"},
-    #         {"depth_req": "/CS/depth_req_camera_nav_3"},
-    #         {"devrule": ""},
-    #         {"info": "/CS/camera_info_3"},
-    #         {"state": "/CS/state_camera_nav_3"},
-    #         {"screenshot": "/CS/screenshot_camera_nav_3"},
-    #         {"flip_camera": False},
-    #         {"cam_id": "19443010F1C5E01200"},          # OakD MXID from NAV launch
-    #         {"health_check_period_sec": 1.0},
-    #         {"health_timeout_sec": 3.0},
-    #         {"jpeg_quality": ParameterValue(opt_jpeg_quality, value_type=int)},
-    #         {"x": ParameterValue(opt_width,  value_type=int)},
-    #         {"y": ParameterValue(opt_height, value_type=int)},
-    #         {"fps": ParameterValue(opt_fps,  value_type=int)},
-    #     ],
-    #     output="screen",
-    # )
+    cs_nav_3 = LifecycleNode(
+        package="camera",
+        executable="camera",
+        name="cs_nav_3_oakd",
+        namespace="/CS",
+        parameters=[
+            {"camera_type": "oak1w_stereo"},
+            {"topic_service": "/CS/req_camera_nav_3"},
+            {"topic_pub": "feed_camera_nav_3"},
+            {"depth": "/CS/depth_camera_nav_3"},
+            {"bw_pub": "/CS/bw_camera_nav_3"},
+            {"depth_req": "/CS/depth_req_camera_nav_3"},
+            {"devrule": ""},
+            {"info": "/CS/camera_info_3"},
+            {"state": "/CS/state_camera_nav_3"},
+            {"flip_camera": False},
+            {"cam_id": "19443010F1C5E01200"},          # OakD MXID from NAV launch
+            {"health_check_period_sec": 1.0},
+            {"health_timeout_sec": 3.0},
+            {"jpeg_quality": ParameterValue(opt_jpeg_quality, value_type=int)},
+            {"x": ParameterValue(opt_width,  value_type=int)},
+            {"y": ParameterValue(opt_height, value_type=int)},
+            {"fps": ParameterValue(opt_fps,  value_type=int)},
+        ],
+        output="screen",
+    )
 
     # ── Lifecycle: configure (bash waits + retries; see module helpers) ─────
 

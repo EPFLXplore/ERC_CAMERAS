@@ -17,8 +17,7 @@ def get_package_file(package, file_path):
 
 
 def generate_launch_description():
-
-
+  
     nav_0_oak1w_21W_T2544_0008 = LifecycleNode(
         package='camera',
         executable='camera',
@@ -103,33 +102,32 @@ def generate_launch_description():
         output='screen',
     )
 
-    # nav_3_oakd = LifecycleNode(
-    #     package='camera',
-    #     executable='camera',
-    #     name='nav_3_oakd',
-    #     namespace='/NAV',
-    #     parameters=[
-    #         {'camera_type': "oak1w_stereo"},
-    #         {'topic_service': "/NAV/req_camera_nav_3"},
-    #         {'topic_pub': "/NAV/feed_camera_nav_3"},
-    #         {'depth': "/NAV/depth_camera_nav_3"},
-    #         {'bw_pub': "/NAV/bw_camera_nav_3"},
-    #         {'depth_req': "/NAV/depth_req_camera_nav_3"},
-    #         {'devrule': ""},
-    #         {'info': "/NAV/camera_info_3"}, # we concatenate the devrule
-    #         {'state': "/NAV/state_camera_nav_3"},
-    #         {'screenshot': '/NAV/screenshot_camera_nav_3'},
-    #         {'fps': 5},
-    #         {'x': 1280},
-    #         {'y': 720},
-    #         {'flip_camera':False},
-    #         # {'cam_id':"19443010714B177E00"},
-    #         {'cam_id':"19443010F1C5E01200"},
-    #         {'health_check_period_sec': 1.0},
-    #         {'health_timeout_sec': 3.0},
-    #     ],
-    #     output='screen',
-    # )
+    nav_3_oakd = LifecycleNode(
+        package='camera',
+        executable='camera',
+        name='nav_3_oakd',
+        namespace='/NAV',
+        parameters=[
+            {'camera_type': "oak1w_stereo"},
+            {'topic_service': "/NAV/req_camera_nav_3"},
+            {'topic_pub': "/NAV/feed_camera_nav_3"},
+            {'depth': "/NAV/depth_camera_nav_3"},
+            {'bw_pub': "/NAV/bw_camera_nav_3"},
+            {'depth_req': "/NAV/depth_req_camera_nav_3"},
+            {'devrule': ""},
+            {'info': "/NAV/camera_info_3"}, # we concatenate the devrule
+            {'state': "/NAV/state_camera_nav_3"},
+            {'fps': 5},
+            {'x': 1280},
+            {'y': 720},
+            {'flip_camera':False},
+            # {'cam_id':"19443010714B177E00"},
+            {'cam_id':"19443010F1C5E01200"},
+            {'health_check_period_sec': 1.0},
+            {'health_timeout_sec': 3.0},
+        ],
+        output='screen',
+    )
 
     configure_camera_0 = ExecuteProcess(
         cmd=['ros2', 'lifecycle', 'set',

@@ -25,6 +25,7 @@ _CS_CAMERAS = [
     {"topic": "/ROVER/feed_camera_cs_top",         "port": 5008},
     {"topic": "/ROVER/feed_camera_cs_right_steer", "port": 5010},
     {"topic": "/ROVER/feed_camera_cs_left_steer",  "port": 5012},
+    {"topic": "/ROVER/feed_camera_cs_drill_inside", "port": 5016},
 ]
 
 
@@ -106,7 +107,6 @@ class GstCameraBridgeNode(Node):
 
         mode      = self.get_parameter("mode").value
         host      = self.get_parameter("host").value
-        base_port = self.get_parameter("base_port").value
         width     = self.get_parameter("width").value
         height    = self.get_parameter("height").value
         fps       = self.get_parameter("fps").value
@@ -125,7 +125,7 @@ class GstCameraBridgeNode(Node):
         self._streams = {}
         for i, cam in enumerate(camera_list):
             topic = cam["topic"]
-            port  = base_port + i * 2
+            port  = cam["port"]
             stream = CameraStream(i, topic, host, port, width, height, fps, bitrate, self.get_logger())
             self._streams[topic] = stream
             self.create_subscription(
