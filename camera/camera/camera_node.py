@@ -44,6 +44,13 @@ class CameraNode(LifecycleNode):
         self.declare_parameter("fps", 10)
         self.declare_parameter("x", 640)
         self.declare_parameter("y", 480)
+        self.declare_parameter("max_exposure_us", 4600)
+        self.max_exposure_us = (
+            self.get_parameter("max_exposure_us")
+            .get_parameter_value()
+            .integer_value
+        )
+
         # MJPEG encoder quality for DepthAI hardware JPEG (1–100); lower = smaller bandwidth.
         self.declare_parameter("jpeg_quality", 95)
         self.declare_parameter("cam_id", self.default)

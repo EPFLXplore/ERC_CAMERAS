@@ -1,3 +1,4 @@
+import array
 import os
 import sys
 import time
@@ -110,6 +111,11 @@ class Oak1WStereoCamera:
         self.node.declare_parameter("flip_camera", False)
         self.flip_camera = self.node.get_parameter("flip_camera").get_parameter_value().bool_value
 
+        # Declared by CameraNode. Too low causes pepper noise; too high motion blur.
+        self.max_exposure_us = (
+            self.node.get_parameter("max_exposure_us").get_parameter_value().integer_value
+        )
+
         self.pipeline = dai.Pipeline()
         cam_rgb = self.pipeline.create(dai.node.ColorCamera)
         enc = self.pipeline.create(dai.node.VideoEncoder)
@@ -121,13 +127,30 @@ class Oak1WStereoCamera:
 
         width = int(self.node.get_parameter("x").value)
         height = int(self.node.get_parameter("y").value)
-        g = gcd(height, 1080)
+
+        NATIVE_W, NATIVE_H = 1920, 1080  # THE_1080_P sensor resolution
+
+        g = gcd(height, NATIVE_H)
         scale_num = height // g
-        scale_den = 1080 // g
+        scale_den = NATIVE_H // g
         cam_rgb.setIspScale(scale_num, scale_den)
+
+        isp_width = (NATIVE_W * scale_num) // scale_den
+        if width != isp_width:
+            self.node.get_logger().warn(
+                f"Requested width={width} does not match the {NATIVE_W}:{NATIVE_H} "
+                f"aspect ratio at height={height} (expected {isp_width}); "
+                f"using {isp_width} instead of cropping the frame."
+            )
+            width = isp_width
 
         cam_rgb.setVideoSize(width, height)
         cam_rgb.setFps(self.node.fps)
+        cam_rgb.initialControl.setAutoExposureEnable()
+        cam_rgb.initialControl.setAutoExposureLimit(max(1, self.max_exposure_us))
+        cam_rgb.initialControl.setAutoFocusMode(
+            dai.CameraControl.AutoFocusMode.CONTINUOUS_PICTURE
+        )
 
         rgb_out.input.setBlocking(False)
         rgb_out.input.setQueueSize(1)
@@ -136,7 +159,7 @@ class Oak1WStereoCamera:
         enc.setLossless(False)
         quality = int(self.node.get_parameter("jpeg_quality").value)
         enc.setQuality(quality)
-        enc.setNumFramesPool(2)
+        enc.setNumFramesPool(1)
 
         cam_rgb.video.link(enc.input)
         enc.bitstream.link(rgb_out.input)
@@ -283,7 +306,12 @@ class Oak1WStereoCamera:
                 if latest_rgb is None:
                     continue
 
-                jpeg_data = bytes(np.array(latest_rgb.getData(), dtype=np.uint8))
+                # getData() is already numpy.ndarray[uint8]; hand the publisher an
+                # array.array('B') so CompressedImage.data hits its fast path. Passing
+                # bytes/numpy instead makes the generated setter validate every byte in
+                # pure Python (~100 ms per 1080p frame on the Jetson).
+                jpeg_data = array.array("B")
+                jpeg_data.frombytes(latest_rgb.getData().tobytes())
                 self.last_jpeg_data = jpeg_data
                 self.last_frame_time = time.monotonic()
 

@@ -99,8 +99,24 @@ exec ros2 service call "$S" std_srvs/srv/SetBool '{{data: true}}'
 def generate_launch_description():
     declare_gcs_ip = DeclareLaunchArgument(
     "gcs_ip",
-    default_value="169.254.55.164", # IPv4 of CS NUC
+    default_value="169.254.55.166", # .166 is IPv4 of CS NUC
     description="Control station IP address",
+    )
+
+    declare_gst_width = DeclareLaunchArgument(
+        "gst_width",
+        default_value="428",
+        description="GStreamer encoding width (resolution fed to x264enc).",
+    )
+    declare_gst_height = DeclareLaunchArgument(
+        "gst_height",
+        default_value="240",
+        description="GStreamer encoding height.",
+    )
+    declare_gst_bitrate = DeclareLaunchArgument(
+        "gst_bitrate",
+        default_value="800",
+        description="x264 target bitrate in kbps (adjustable at runtime via ros2 param set).",
     )
 
     gcs_ip = LaunchConfiguration("gcs_ip")
@@ -108,6 +124,9 @@ def generate_launch_description():
     opt_width        = LaunchConfiguration("opt_width")
     opt_height       = LaunchConfiguration("opt_height")
     opt_fps          = LaunchConfiguration("opt_fps")
+    gst_width        = LaunchConfiguration("gst_width")
+    gst_height       = LaunchConfiguration("gst_height")
+    gst_bitrate      = LaunchConfiguration("gst_bitrate")
 
     declare_opt_jpeg_quality = DeclareLaunchArgument(
         "opt_jpeg_quality",
@@ -250,37 +269,37 @@ def generate_launch_description():
     n0 = "/CS/cs_nav_0_oak1w_21W_T2544_0008"
     n1 = "/CS/cs_nav_1_oak1w_21W_T2544_0069"
     n2 = "/CS/cs_nav_2_oak1w_21W_T2544_0035"
-    n3 = "/CS/cs_nav_3_oakd"
+    # n3 = "/CS/cs_nav_3_oakd"
 
     configure_0 = ExecuteProcess(cmd=_lifecycle_configure_cmd(n0), output="screen")
     configure_1 = ExecuteProcess(cmd=_lifecycle_configure_cmd(n1), output="screen")
     configure_2 = ExecuteProcess(cmd=_lifecycle_configure_cmd(n2), output="screen")
-    configure_3 = ExecuteProcess(cmd=_lifecycle_configure_cmd(n3), output="screen")
+    # configure_3 = ExecuteProcess(cmd=_lifecycle_configure_cmd(n3), output="screen")
 
     # ── Lifecycle: activate ───────────────────────────────────────────────────
 
     activate_0 = ExecuteProcess(cmd=_lifecycle_activate_cmd(n0), output="screen")
     activate_1 = ExecuteProcess(cmd=_lifecycle_activate_cmd(n1), output="screen")
     activate_2 = ExecuteProcess(cmd=_lifecycle_activate_cmd(n2), output="screen")
-    activate_3 = ExecuteProcess(cmd=_lifecycle_activate_cmd(n3), output="screen")
+    # activate_3 = ExecuteProcess(cmd=_lifecycle_activate_cmd(n3), output="screen")
 
     # ── SetBool: start streaming ──────────────────────────────────────────────
 
     call_0 = ExecuteProcess(cmd=_lifecycle_call_setbool_cmd(n0, "/CS/req_camera_nav_0"), output="screen")
     call_1 = ExecuteProcess(cmd=_lifecycle_call_setbool_cmd(n1, "/CS/req_camera_nav_1"), output="screen")
     call_2 = ExecuteProcess(cmd=_lifecycle_call_setbool_cmd(n2, "/CS/req_camera_nav_2"), output="screen")
-    call_3 = ExecuteProcess(cmd=_lifecycle_call_setbool_cmd(n3, "/CS/req_camera_nav_3"), output="screen")
+    # call_3 = ExecuteProcess(cmd=_lifecycle_call_setbool_cmd(n3, "/CS/req_camera_nav_3"), output="screen")
 
     # ── Timers: stagger camera nodes; configure wrappers poll until ready ─────
     delayed_0 = TimerAction(period=0.0,  actions=[cs_nav_0])
     delayed_1 = TimerAction(period=3.0, actions=[cs_nav_1])
     delayed_2 = TimerAction(period=6.0, actions=[cs_nav_2])
-    delayed_3 = TimerAction(period=9.0, actions=[cs_nav_3])
+    # delayed_3 = TimerAction(period=9.0, actions=[cs_nav_3])
 
     configure_0_delayed = TimerAction(period=0.0,  actions=[configure_0])
     configure_1_delayed = TimerAction(period=3.0, actions=[configure_1])
     configure_2_delayed = TimerAction(period=6.0, actions=[configure_2])
-    configure_3_delayed = TimerAction(period=9.0, actions=[configure_3])
+    # configure_3_delayed = TimerAction(period=9.0, actions=[configure_3])
 
     # Activate only after configure command exits for each camera.
     activate_after_configure_0 = RegisterEventHandler(
@@ -292,9 +311,9 @@ def generate_launch_description():
     activate_after_configure_2 = RegisterEventHandler(
         OnProcessExit(target_action=configure_2, on_exit=[activate_2])
     )
-    activate_after_configure_3 = RegisterEventHandler(
-        OnProcessExit(target_action=configure_3, on_exit=[activate_3])
-    )
+    # activate_after_configure_3 = RegisterEventHandler(
+    #     OnProcessExit(target_action=configure_3, on_exit=[activate_3])
+    # )
 
     # ── Event handlers: call SetBool only after activate exits ────────────────
 
@@ -307,23 +326,26 @@ def generate_launch_description():
     call_after_activate_2 = RegisterEventHandler(
         OnProcessExit(target_action=activate_2, on_exit=[call_2])
     )
-    call_after_activate_3 = RegisterEventHandler(
-        OnProcessExit(target_action=activate_3, on_exit=[call_3])
-    )
+    # call_after_activate_3 = RegisterEventHandler(
+    #     OnProcessExit(target_action=activate_3, on_exit=[call_3])
+    # )
 
     #launch gstream feeds to be visualized at the CS
     gst_bridge = RosNode(
-    package="camera",
-    executable="gst_camera_bridge",
-    name="gst_camera_bridge",
-    namespace="/CS",
-    parameters=[
-        {"host":      ParameterValue(gcs_ip,     value_type=str)},
-        {"width":     ParameterValue(opt_width,  value_type=int)},
-        {"height":    ParameterValue(opt_height, value_type=int)},
-        {"fps":       ParameterValue(opt_fps,    value_type=int)},
-    ],
-    output="screen",
+        package="camera",
+        executable="gst_camera_bridge",
+        name="gst_camera_bridge",
+        namespace="/NAV",
+        parameters=[
+            {"mode":      "nav"},
+            {"host":      ParameterValue(gcs_ip,      value_type=str)},
+            {"base_port": 5000},
+            {"width":     ParameterValue(gst_width,   value_type=int)},
+            {"height":    ParameterValue(gst_height,  value_type=int)},
+            {"fps":       ParameterValue(opt_fps,     value_type=int)},
+            {"bitrate":   ParameterValue(gst_bitrate, value_type=int)},
+        ],
+        output="screen",
     )
 
     gst_bridge_delayed = TimerAction(period=15.0, actions=[gst_bridge])
@@ -334,21 +356,24 @@ def generate_launch_description():
         declare_opt_width,
         declare_opt_height,
         declare_opt_fps,
+        declare_gst_width,
+        declare_gst_height,
+        declare_gst_bitrate,
         delayed_0,
         delayed_1,
         delayed_2,
-        delayed_3,
+        # delayed_3,
         configure_0_delayed,
         configure_1_delayed,
         configure_2_delayed,
-        configure_3_delayed,
+        # configure_3_delayed,
         activate_after_configure_0,
         activate_after_configure_1,
         activate_after_configure_2,
-        activate_after_configure_3,
+        # activate_after_configure_3,
         call_after_activate_0,
         call_after_activate_1,
         call_after_activate_2,
-        call_after_activate_3,
+        # call_after_activate_3,
         gst_bridge_delayed
     ])

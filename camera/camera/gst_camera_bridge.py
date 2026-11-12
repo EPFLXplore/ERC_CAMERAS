@@ -11,7 +11,7 @@ from sensor_msgs.msg import CompressedImage
 
 Gst.init(None)
 
-# this node subscribes to ROS2 CompressedImage topics inside the rover, and creates independant 
+# this node subscribes to ROS2 CompressedImage topics inside the rover, and creates independant
 # Gstreamer feeds
 
 _NAV_CAMERAS = [
@@ -98,9 +98,10 @@ class GstCameraBridgeNode(Node):
     def __init__(self):
         super().__init__("gst_camera_bridge")
         self.declare_parameter("mode", "nav")  # "nav" or "cs"
-        self.declare_parameter("host", "169.254.55.164") # Control Station NUC
-        self.declare_parameter("width", 640)
-        self.declare_parameter("height", 360)
+        self.declare_parameter("host", "169.254.55.166") # .166 Control Station NUC
+        self.declare_parameter("base_port", 5000)
+        self.declare_parameter("width", 428)
+        self.declare_parameter("height", 240)
         self.declare_parameter("fps", CAM_FPS)
         self.declare_parameter("bitrate", CAM_BITRATE_KBPS)
 
