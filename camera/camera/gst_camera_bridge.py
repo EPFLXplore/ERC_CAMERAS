@@ -28,6 +28,8 @@ _CS_CAMERAS = [
     {"topic": "/ROVER/feed_camera_cs_drill_inside", "port": 5016},
 ]
 
+_HD_CAMERAS = [
+    {"topic": "/ROVER/feed_camera_hd_0", "port": 5013}]
 
 CAM_FPS = 15
 CAM_BITRATE_KBPS = 800
@@ -97,7 +99,7 @@ class CameraStream:
 class GstCameraBridgeNode(Node):
     def __init__(self):
         super().__init__("gst_camera_bridge")
-        self.declare_parameter("mode", "nav")  # "nav" or "cs"
+        self.declare_parameter("mode", "nav")  # "nav" or "cs" or "hd"
         self.declare_parameter("host", "169.254.55.166") # .166 Control Station NUC
         self.declare_parameter("base_port", 5000)
         self.declare_parameter("width", 428)
@@ -112,7 +114,12 @@ class GstCameraBridgeNode(Node):
         fps       = self.get_parameter("fps").value
         bitrate   = self.get_parameter("bitrate").value
 
-        camera_list = _CS_CAMERAS if mode == "cs" else _NAV_CAMERAS
+        if mode == "hd":
+            camera_list = _HD_CAMERAS
+        elif mode == "cs":
+            camera_list = _CS_CAMERAS
+        else:
+            camera_list = _NAV_CAMERAS
 
         qos = QoSProfile(
             reliability=QoSReliabilityPolicy.BEST_EFFORT,
