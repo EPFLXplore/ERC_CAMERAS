@@ -86,17 +86,25 @@ class CameraNode(LifecycleNode):
         self.cam_bw = self.create_publisher(Float32, self.publisher_topic_bw, 1)
         self.state = self.create_publisher(Bool, self.state_topic, 1)
 
-        # object camera
-        self.camera =  CameraFactory.create_camera(self)
+        try:
+            # object camera
+            self.camera = CameraFactory.create_camera(self)
 
-        # Service to activate the camera. For now we hardcode the parameters so we use just a SetBool
-        self.service_activation = self.create_service(SetBool, self.service_topic, self.start_cameras_callback, callback_group=self.callback_group)
+            # Service to activate the camera. For now we hardcode the parameters so we use just a SetBool
+            self.service_activation = self.create_service(SetBool, self.service_topic, self.start_cameras_callback, callback_group=self.callback_group)
 
-        self.health_timer = self.create_timer(
-            self.health_check_period_sec,
-            self.health_check_callback,
-            callback_group=self.callback_group,
-        )
+            self.health_timer = self.create_timer(
+                self.health_check_period_sec,
+                self.health_check_callback,
+                callback_group=self.callback_group,
+            )
+        except Exception as exc:
+            self.get_logger().error(
+                f"Failed to configure camera '{self.camera_type}' for lifecycle node: {exc}",
+                throttle_duration_sec=5.0,
+            )
+            self.camera = None
+            return TransitionCallbackReturn.FAILURE
 
         self.get_logger().info("Cameras ready")
         return TransitionCallbackReturn.SUCCESS
@@ -176,9 +184,13 @@ class CameraNode(LifecycleNode):
             if self.camera is None:
                 raise RuntimeError("Camera is not configured")
 
-            self.stopped = False
+            self.stopped = False                
             if self.thread is not None and self.thread.is_alive():
+                if self.camera_type == "oakd_stereo": # If already running HDS needs to answer to be true for the tasks
+                    self.get_logger().warn("Camera is already running")
+                    return True           
                 return False
+                
 
             if hasattr(self.camera, "open_device"):
                 self.camera.open_device()
